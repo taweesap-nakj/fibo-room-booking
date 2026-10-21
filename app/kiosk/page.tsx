@@ -1,5 +1,6 @@
 "use client";
 
+import { autoReleaseExpiredBookings } from "@/lib/booking";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
@@ -83,28 +84,42 @@ useEffect(() => {
     }
   };
 
-  // ดึงรายการจองของห้องที่เลือก
   const fetchBookings = async () => {
     try {
-      const { data, error } = await supabase
+      // 1. ตรวจสอบและตัดรายการหมดอายุทิ้งทันที
+      await autoReleaseExpiredBookings();
+
+      // 2. ดึงการจองของห้องนี้ โดยไม่เอารายการที่ถูกยกเลิก (cancelled)
+      const { data: bookingsData, error } = await supabase
         .from("bookings")
         .select("*")
+        .eq("room_id", roomId) // หรือ currentRoom.id
+        .eq("date", todayStr)
+        .neq("status", "cancelled") // กรองรายการที่ถูกยกเลิกออกไป
         .order("start_time", { ascending: true });
 
       if (error) throw error;
-      if (data) {
-        setBookings(data);
-      }
+
+      // กรองเฉพาะรายการที่ยังไม่หมดเวลา (หรือเป็นรายการปัจจุบัน/อนาคต)
+      const nowMs = Date.now();
+      const validBookings = (bookingsData || []).filter((b) => {
+        let endMs = new Date(b.end_time).getTime();
+        if (isNaN(endMs) && b.date && b.end_time) {
+          endMs = new Date(`${b.date}T${b.end_time}:00`).getTime();
+        }
+        // ไม่เอารายการที่สิ้นสุดไปแล้ว
+        return isNaN(endMs) ? true : endMs > nowMs;
+      });
+
+      setTodayBookings(validBookings);
     } catch (err) {
-      console.error("Fetch bookings error:", err);
-    } finally {
-      setIsLoading(false);
+      console.error("Kiosk fetch error:", err);
     }
   };
 
   useEffect(() => {
     fetchRooms();
-    fetchBookings();
+    fetchKioskData()
 
     // ตัวจับเวลานาฬิกาเดินทุกวินาที
     const timer = setInterval(() => {
