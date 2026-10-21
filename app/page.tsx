@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import {
   Search, Bell, Layers, Clock, Zap, X, Users,
   LogOut, Sparkles, Tablet,
-  CalendarRange, AlertCircle, KeyRound
+  CalendarRange, AlertCircle, KeyRound, Monitor
 } from "lucide-react";
 function getNextHourString(): string {
   const d = new Date();
@@ -39,6 +39,7 @@ export default function HomePage() {
 
   const [floorFilter, setFloorFilter] = useState<number | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Modal State
   const [modalRoom, setModalRoom] = useState<Room | null>(null);
@@ -56,9 +57,31 @@ export default function HomePage() {
     return `${String(nextTwoH).padStart(2, "0")}:00`;
   };
 
-  // ดึงข้อมูลห้องและรายการจองจาก Supabase
+  // ดึงข้อมูลห้องและรายการจองจาก Supabase รวมถึงเช็คสิทธิ์ Admin
   const fetchData = async () => {
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session?.user) {
+        if (session.user.email === "admin@fibo.kmutt.ac.th") {
+          setIsAdmin(true);
+        } else {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", session.user.id)
+            .single();
+
+          if (profile?.role === "admin" || session.user.user_metadata?.role === "admin") {
+            setIsAdmin(true);
+          } else {
+            setIsAdmin(false);
+          }
+        }
+      }
+
       const { data: roomsData, error: roomsError } = await supabase
         .from("rooms")
         .select("*")
@@ -204,7 +227,8 @@ export default function HomePage() {
   };
 
   // บันทึกการจองลง Supabase จริง
-const handleConfirmBooking = async () => {
+  const handleConfirmBooking = async (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
     if (!modalRoom || !canSubmitBooking) return;
 
     if (!bookingDate || !formStart || !formEnd) {
@@ -310,6 +334,17 @@ const handleConfirmBooking = async () => {
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4">
+          {/* ปุ่มทางลัดเปิดหน้า Kiosk แสดงเฉพาะเมื่อเป็น Admin เท่านั้น */}
+          {isAdmin && (
+            <Link
+              href="/kiosk"
+              className="hidden lg:flex items-center gap-2 bg-slate-900 hover:bg-orange-600 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm"
+            >
+              <Monitor className="w-4 h-4 text-orange-400" />
+              <span>เปิดจอ Kiosk (Admin)</span>
+            </Link>
+          )}
+
           <div className="hidden md:flex items-center gap-2 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200/70 px-3.5 py-1.5 rounded-full text-xs">
             <Clock className="w-3.5 h-3.5 text-orange-600" />
             <span className="text-slate-600 font-medium">โควตาคงเหลือ:</span>
@@ -357,6 +392,14 @@ const handleConfirmBooking = async () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+            {isAdmin && (
+              <Link
+                href="/kiosk"
+                className="flex md:hidden flex-1 px-4 py-3 rounded-2xl bg-slate-900 text-white text-xs font-extrabold shadow-lg items-center justify-center gap-2"
+              >
+                <Monitor className="w-4 h-4 text-orange-400" /> เปิดจอ Kiosk (Admin)
+              </Link>
+            )}
             <Link
               href="/schedule"
               className="flex-1 md:flex-initial px-4 py-3 rounded-2xl bg-white text-slate-900 hover:bg-orange-50 active:scale-95 text-xs font-extrabold shadow-lg transition-all flex items-center justify-center gap-2"
@@ -490,8 +533,6 @@ const handleConfirmBooking = async () => {
                             Not Available
                           </button>
                         )}
-
-
                       </div>
                     </div>
                   </div>
@@ -598,16 +639,16 @@ const handleConfirmBooking = async () => {
               </div>
 
               {/* ช่องเลือกวันที่ใช้งาน */}
-<div className="mb-2.5">
-  <label className="font-bold text-slate-700 block mb-1 text-xs">วันที่ต้องการใช้งาน</label>
-  <input
-    type="date"
-    min={new Date().toISOString().split("T")[0]}
-    value={bookingDate}
-    onChange={(e) => setBookingDate(e.target.value)}
-    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
-  />
-</div>
+              <div className="mb-2.5">
+                <label className="font-bold text-slate-700 block mb-1 text-xs">วันที่ต้องการใช้งาน</label>
+                <input
+                  type="date"
+                  min={new Date().toISOString().split("T")[0]}
+                  value={bookingDate}
+                  onChange={(e) => setBookingDate(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="font-bold text-slate-700 block mb-1">เวลาเริ่ม</label>
