@@ -1,6 +1,5 @@
 "use client";
 
-
 import UserNav from "@/components/UserNav";
 import { createBooking } from "@/lib/booking";
 import { useState, useEffect } from "react";
@@ -13,6 +12,7 @@ import {
   LogOut, Sparkles, Tablet,
   CalendarRange, AlertCircle, KeyRound, Monitor
 } from "lucide-react";
+
 function getNextHourString(): string {
   const d = new Date();
   d.setHours(d.getHours() + 1);
@@ -26,20 +26,24 @@ function getNextTwoHoursString(): string {
   const hh = String(d.getHours()).padStart(2, "0");
   return `${hh}:00`;
 }
+
 export default function HomePage() {
   const router = useRouter();
+
+  // State ตรวจสอบการเข้าสู่ระบบ
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [currentTime, setCurrentTime] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [bookingDate, setBookingDate] = useState<string>(
-  new Date().toISOString().split("T")[0]
-);
+    new Date().toISOString().split("T")[0]
+  );
 
   const [floorFilter, setFloorFilter] = useState<number | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
 
   // Modal State
   const [modalRoom, setModalRoom] = useState<Room | null>(null);
@@ -50,44 +54,47 @@ export default function HomePage() {
   const [formName, setFormName] = useState("Thawisap N.");
   const [formEmail, setFormEmail] = useState("thawisap@fibo.kmutt.ac.th");
 
-
-  const getNextTwoHoursString = () => {
-    const d = new Date();
-    const nextTwoH = (d.getHours() + 2) % 24;
-    return `${String(nextTwoH).padStart(2, "0")}:00`;
-  };
-
-  // ดึงข้อมูลห้องและรายการจองจาก Supabase รวมถึงเช็คสิทธิ์ Admin
-  const fetchData = async () => {
+  // ตรวจสอบสิทธิ์การเข้าใช้งานและดึงข้อมูล
+  const checkAuthAndFetchData = async () => {
     try {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (session?.user) {
-        if (session.user.email === "admin@fibo.kmutt.ac.th") {
+      // ถ้าไม่มี Session การล็อกอิน ให้ดีดไปหน้า /login ทันที
+      if (!session?.user) {
+        router.replace("/login");
+        return;
+      }
+
+      // ถ้าล็อกอินแล้ว ให้ปลดล็อกหน้าจอ
+      setIsAuthChecking(false);
+
+      // ตรวจสอบสิทธิ์ Admin
+      if (session.user.email === "admin@fibo.kmutt.ac.th") {
+        setIsAdmin(true);
+      } else {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .single();
+
+        if (profile?.role === "admin" || session.user.user_metadata?.role === "admin") {
           setIsAdmin(true);
         } else {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("role")
-            .eq("id", session.user.id)
-            .single();
-
-          if (profile?.role === "admin" || session.user.user_metadata?.role === "admin") {
-            setIsAdmin(true);
-          } else {
-            setIsAdmin(false);
-          }
+          setIsAdmin(false);
         }
       }
 
-      const { data: roomsData, error: roomsError } = await supabase
+      // ดึงข้อมูลห้อง
+      const { data: roomsData } = await supabase
         .from("rooms")
         .select("*")
         .order("id");
 
-      const { data: bookingsData, error: bookingsError } = await supabase
+      // ดึงข้อมูลการจอง
+      const { data: bookingsData } = await supabase
         .from("bookings")
         .select("*")
         .order("created_at", { ascending: false });
@@ -134,7 +141,14 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    fetchData();
+    checkAuthAndFetchData();
+
+    // ฟังสถานะ Login/Logout ถ้ามีการออกจากระบบให้ดีดกลับไปหน้า Login ทันที
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT" || !session) {
+        router.replace("/login");
+      }
+    });
 
     // สมัครรับการเปลี่ยนแปลงแบบ Real-time จาก Supabase
     const channel = supabase
@@ -142,12 +156,12 @@ export default function HomePage() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "rooms" },
-        () => fetchData()
+        () => checkAuthAndFetchData()
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "bookings" },
-        () => fetchData()
+        () => checkAuthAndFetchData()
       )
       .subscribe();
 
@@ -161,10 +175,11 @@ export default function HomePage() {
     const timer = setInterval(updateTime, 1000);
 
     return () => {
+      authListener.subscription.unsubscribe();
       supabase.removeChannel(channel);
       clearInterval(timer);
     };
-  }, []);
+  }, [router]);
 
   const availableCount = rooms.filter((r) => r.status === "available").length;
   const pendingCount = rooms.filter((r) => r.status === "pending").length;
@@ -191,7 +206,6 @@ export default function HomePage() {
 
   const selectedDuration = calculateSelectedDuration(formStart, formEnd);
 
-  // ตรวจสอบว่าเป็นเวลาย้อนหลังหรือไม่ โดยรวมวันที่ (bookingDate) และเวลา (formStart)
   const isPastTime = (() => {
     if (!bookingDate || !formStart) return false;
     const selectedDateTime = new Date(`${bookingDate}T${formStart}:00`);
@@ -226,7 +240,6 @@ export default function HomePage() {
     setFormEnd(getNextTwoHoursString());
   };
 
-  // บันทึกการจองลง Supabase จริง
   const handleConfirmBooking = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     if (!modalRoom || !canSubmitBooking) return;
@@ -318,6 +331,18 @@ export default function HomePage() {
     );
   };
 
+  // หน้าจอดักแสดงผลชั่วคราวระหว่างตรวจสิทธิ์ หากยังไม่ได้ Login จะค้างหน้านี้แล้วเด้งไปหน้า /login ทันที
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white space-y-4">
+        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-xs font-bold text-slate-300 tracking-wider uppercase">
+          กำลังตรวจสอบสิทธิ์การเข้าใช้งานระบบ...
+        </p>
+      </div>
+    );
+  }
+
   return (
     <>
       {/* Top Header */}
@@ -334,7 +359,6 @@ export default function HomePage() {
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4">
-          {/* ปุ่มทางลัดเปิดหน้า Kiosk แสดงเฉพาะเมื่อเป็น Admin เท่านั้น */}
           {isAdmin && (
             <Link
               href="/kiosk"
@@ -352,7 +376,7 @@ export default function HomePage() {
               {remainingQuota} / 4 ชม.
             </span>
           </div>
-          <UserNav/>
+          <UserNav />
 
           <div className="text-right">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hidden sm:block">เวลาจริง</p>
