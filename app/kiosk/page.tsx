@@ -1,432 +1,376 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import {
+  Clock,
+  ArrowLeft,
+  Calendar,
+  CheckCircle2,
+  AlertTriangle,
+  QrCode,
+  Users,
+  Radio,
+  DoorOpen,
+} from "lucide-react";
+
+interface BookingItem {
+  id: string;
+  room_id: string;
+  title: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  status: string;
+  attendees: number;
+}
+
+interface RoomItem {
+  id: string;
+  name?: string;
+  floor: number;
+  capacity: number;
+  status: string;
+}
 
 export default function KioskPage() {
-  const router = useRouter();
-
-  // State สำหรับตรวจสอบสิทธิ์ Admin
-  const [authLoading, setAuthLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-
-  // State สำหรับข้อมูลห้องและการจอง
-  const [rooms, setRooms] = useState<any[]>([]);
-  const [selectedRoomId, setSelectedRoomId] = useState<string>("");
-  const [bookings, setBookings] = useState<any[]>([]);
+  const [rooms, setRooms] = useState<RoomItem[]>([]);
+  const [selectedRoomId, setSelectedRoomId] = useState<string>("FB202");
+  const [bookings, setBookings] = useState<BookingItem[]>([]);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
-  const [origin, setOrigin] = useState<string>("");
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // 1. ตรวจสอบสิทธิ์ผู้ใช้ว่าใช่ Admin หรือไม่
-  useEffect(() => {
-    setOrigin(window.location.origin);
-
-    const checkAdminAccess = async () => {
-      setAuthLoading(true);
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session?.user) {
-        setIsAdmin(false);
-        setAuthLoading(false);
-        return;
-      }
-
-      setUserEmail(session.user.email || null);
-
-      // ดึงค่า role จากตาราง profiles
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", session.user.id)
-        .single();
-
-      // เช็คว่าเป็น admin ในตาราง profiles หรือใน user_metadata
-      const userRole = profile?.role || session.user.user_metadata?.role;
-
-      // เพิ่มเงื่อนไขให้เมล admin@fibo.kmutt.ac.th ผ่านได้ทันที
-      if (userRole === "admin" || session.user.email === "admin@fibo.kmutt.ac.th") {
-        setIsAdmin(true);
-      } else {
-        setIsAdmin(false);
-      }
-      setAuthLoading(false);
-    };
-
-    checkAdminAccess();
-  }, []);
-
-  // 2. นาฬิกา Realtime
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // 3. ดึงข้อมูลห้องและการจอง (ทำงานเฉพาะเมื่อเป็น Admin เท่านั้น)
-  const fetchKioskData = async () => {
-    const { data: roomsData } = await supabase
-      .from("rooms")
-      .select("*")
-      .order("id", { ascending: true });
-
-    if (roomsData && roomsData.length > 0) {
-      setRooms(roomsData);
+  // ดึงรายชื่อห้องทั้งหมด
+  const fetchRooms = async () => {
+    const { data } = await supabase.from("rooms").select("*").order("id");
+    if (data && data.length > 0) {
+      setRooms(data);
       if (!selectedRoomId) {
-        setSelectedRoomId(roomsData[0].id);
+        setSelectedRoomId(data[0].id);
       }
     }
+  };
 
-    const todayStr = new Date().toISOString().split("T")[0];
-    const { data: bookingsData } = await supabase
-      .from("bookings")
-      .select("*")
-      .eq("date", todayStr)
-      .neq("status", "cancelled")
-      .order("start_time", { ascending: true });
+  // ดึงรายการจองของห้องที่เลือก
+  const fetchBookings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select("*")
+        .order("start_time", { ascending: true });
 
-    if (bookingsData) {
-      setBookings(bookingsData);
+      if (error) throw error;
+      if (data) {
+        setBookings(data);
+      }
+    } catch (err) {
+      console.error("Fetch bookings error:", err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!isAdmin) return;
-    fetchKioskData();
+    fetchRooms();
+    fetchBookings();
 
+    // ตัวจับเวลานาฬิกาเดินทุกวินาที
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    // ดักฟัง Realtime จาก Supabase เมื่อมีการกดจองหรืออัปเดตสถานะ
     const channel = supabase
       .channel("kiosk-realtime")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "bookings" },
-        () => fetchKioskData()
+        () => fetchBookings()
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "rooms" },
-        () => fetchKioskData()
+        () => fetchRooms()
       )
       .subscribe();
 
+    // สำรองดึงข้อมูลซ้ำทุก 10 วินาที
+    const pollInterval = setInterval(() => {
+      fetchBookings();
+    }, 10000);
+
     return () => {
+      clearInterval(timer);
+      clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
-  }, [isAdmin]);
+  }, []);
 
-  // ---------------- หน้าจอขณะกำลังตรวจสอบสิทธิ์ ----------------
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
-        <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="text-slate-600 font-medium">กำลังตรวจสอบสิทธิ์ผู้ดูแลระบบ (Admin)...</p>
-      </div>
-    );
-  }
+  const selectedRoom = rooms.find((r) => r.id === selectedRoomId);
 
-  // ---------------- หน้าจอบล็อกการเข้าถึง (ถ้าไม่ใช่ Admin) ----------------
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-6">
-        <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-slate-100 p-8 text-center">
-          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-sm border border-red-100">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
-          </div>
-          <span className="inline-block px-3 py-1 bg-red-50 text-red-600 text-xs font-bold uppercase tracking-wider rounded-full mb-3">
-            Admin Only Access
-          </span>
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">จำกัดสิทธิ์เฉพาะผู้ดูแลระบบ</h1>
-          <p className="text-slate-500 text-sm mb-6 leading-relaxed">
-            หน้าจอแสดงผล QR Code หน้าห้อง (Kiosk Signage) สงวนสิทธิ์การใช้งานเฉพาะเจ้าหน้าที่ดูแลระบบของ FIBO เท่านั้น
-          </p>
-
-          {userEmail ? (
-            <div className="bg-slate-50 rounded-xl p-3 mb-6 border border-slate-200 text-xs text-slate-600">
-              บัญชีปัจจุบัน: <span className="font-semibold text-slate-800">{userEmail}</span>
-              <div className="text-red-500 font-medium mt-0.5">(สถานะ: ผู้ใช้งานทั่วไป ไม่ใช่ Admin)</div>
-            </div>
-          ) : (
-            <div className="bg-amber-50 rounded-xl p-3 mb-6 border border-amber-200 text-xs text-amber-700">
-              คุณยังไม่ได้เข้าสู่ระบบ กรุณาเข้าสู่ระบบด้วยบัญชี Admin
-            </div>
-          )}
-
-          <div className="flex gap-3">
-            <Link
-              href="/"
-              className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition"
-            >
-              กลับหน้าหลัก
-            </Link>
-            <Link
-              href="/login"
-              className="flex-1 py-3 px-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl text-sm shadow-md shadow-orange-500/20 transition"
-            >
-              เข้าสู่ระบบ Admin
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ---------------- คำนวณสถานะห้องปัจจุบัน (สำหรับ Admin) ----------------
-  const currentRoom = rooms.find((r) => r.id === selectedRoomId) || rooms[0];
-  const nowMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
-
-  const roomBookings = bookings.filter(
-    (b) => b.room_id?.toUpperCase() === currentRoom?.id?.toUpperCase()
-  );
-
-  const activeBooking = roomBookings.find((b) => {
-    const [sh, sm] = (b.start_time || "00:00").split(":").map(Number);
-    const [eh, em] = (b.end_time || "00:00").split(":").map(Number);
-    const startMin = sh * 60 + sm;
-    const endMin = eh * 60 + em;
-    return nowMinutes >= startMin - 15 && nowMinutes < endMin;
+  // กรองรายการจองของห้องที่เลือก (เปรียบเทียบรหัสห้องแบบ Case-insensitive)
+  const roomBookings = bookings.filter((b) => {
+    const bRoom = (b.room_id || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const sRoom = (selectedRoomId || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    return bRoom === sRoom;
   });
 
-  const isOccupied = activeBooking?.status === "checked_in";
+  // ค้นหารายการจองที่ต้องแสดงผล ณ ตอนนี้
+  // เงื่อนไข: เวลาปัจจุบันอยู่ในช่วง (เวลาเริ่ม - 15 นาที) ถึง (เวลาสิ้นสุด)
+  const now = currentTime.getTime();
+
+  const activeBooking = roomBookings.find((b) => {
+    if (b.status === "completed" || b.status === "cancelled") return false;
+
+    // รองรับทั้งแบบ ISO Date ("2026-10-21T23:50:00") และ Time string ("23:50")
+    let startMs = new Date(b.start_time).getTime();
+    let endMs = new Date(b.end_time).getTime();
+
+    if (isNaN(startMs)) {
+      const todayStr = currentTime.toISOString().split("T")[0];
+      startMs = new Date(`${todayStr}T${b.start_time}:00`).getTime();
+      endMs = new Date(`${todayStr}T${b.end_time}:00`).getTime();
+    }
+
+    // เปิดให้เช็คอินได้ล่วงหน้า 15 นาที จนถึงเวลาหมดการจอง
+    const checkInStartWindow = startMs - 15 * 60 * 1000;
+    return now >= checkInStartWindow && now <= endMs;
+  });
+
+  // สถานะห้อง ณ ปัจจุบัน
   const isPendingCheckIn = activeBooking && activeBooking.status !== "checked_in";
+  const isOccupied = activeBooking && activeBooking.status === "checked_in";
 
-  const checkInUrl = activeBooking
-    ? `${origin}/check-in?bookingId=${activeBooking.id}&roomId=${currentRoom?.id}`
-    : `${origin}/check-in?roomId=${currentRoom?.id}`;
+  // ข้อมูลสำหรับสร้าง QR Code (สอดคล้องกับตัวสแกนในหน้า /check-in)
+  const qrData = `FIBO-ROOM-${selectedRoomId}-${activeBooking?.id || "DIRECT"}`;
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(
+    qrData
+  )}&margin=10`;
 
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(
-    checkInUrl
-  )}`;
-
-  // ---------------- UI หน้า Kiosk ธีม FIBO Smart Space ----------------
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col">
-      {/* Top Navbar สไตล์เดียวกับหน้าหลัก */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-20 shadow-sm">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-orange-500 flex items-center justify-center text-white font-bold text-lg shadow-sm shadow-orange-500/30">
-              F
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-bold text-slate-800 text-lg leading-none">
-                  FIBO Smart Signage
-                </h1>
-                <span className="px-2.5 py-0.5 text-[11px] font-bold bg-orange-100 text-orange-600 rounded-full">
-                  ADMIN KIOSK MODE
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-1">
-                จอแสดงสถานะหน้าห้องและ Dynamic QR Code สำหรับสแกนเช็คอินเข้าใช้งาน
-              </p>
-            </div>
+    <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
+      {/* Top Navbar */}
+      <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-[#EA580C] text-white flex items-center justify-center font-black text-lg shadow-md shadow-orange-500/20">
+            F
           </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-black text-slate-800">FIBO Smart Signage</h1>
+              <span className="bg-orange-100 text-[#EA580C] text-[10px] font-bold px-2 py-0.5 rounded-md">
+                ADMIN KIOSK MODE
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              จอแสดงสถานะหน้าห้องและ Dynamic QR Code สำหรับสแกนเช็คอิน
+            </p>
+          </div>
+        </div>
 
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-slate-600">เลือกห้องแสดงผล:</span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-slate-600">เลือกห้องแสดงผล:</label>
             <select
               value={selectedRoomId}
               onChange={(e) => setSelectedRoomId(e.target.value)}
-              className="bg-slate-50 border border-slate-300 text-slate-800 text-sm font-semibold rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-orange-500"
             >
-              {rooms.map((room) => (
-                <option key={room.id} value={room.id}>
-                  ห้อง {room.id} ({room.name || `ชั้น ${room.floor || "-"}`})
+              {rooms.map((r) => (
+                <option key={r.id} value={r.id}>
+                  ห้อง {r.id} {r.name ? `(${r.name})` : ""}
                 </option>
               ))}
             </select>
-
-            <Link
-              href="/"
-              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-xl transition flex items-center gap-1.5"
-            >
-              <span>←</span> กลับหน้าหลัก
-            </Link>
           </div>
+
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> กลับหน้าหลัก
+          </Link>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 flex flex-col justify-center">
-        <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
-          {/* แถบสีสถานะด้านบนการ์ด */}
-          <div
-            className={`h-3 w-full ${
-              isOccupied
-                ? "bg-red-500"
-                : isPendingCheckIn
-                ? "bg-amber-500"
-                : "bg-emerald-500"
-            }`}
-          />
-
-          <div className="p-8 md:p-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            {/* ฝั่งซ้าย: ข้อมูลห้องและตารางเวลา (7 คอลัมน์) */}
-            <div className="lg:col-span-7 space-y-6">
-              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-6">
+      {/* Main Kiosk Display */}
+      <main className="flex-1 p-6 md:p-10 flex items-center justify-center">
+        <div className="max-w-5xl w-full bg-white rounded-3xl border border-slate-200/80 shadow-xl overflow-hidden grid grid-cols-1 lg:grid-cols-12">
+          {/* ข้อมูลห้องด้านซ้าย (7 Columns) */}
+          <div className="lg:col-span-7 p-8 md:p-10 flex flex-col justify-between space-y-6 border-b lg:border-b-0 lg:border-r border-slate-100">
+            <div>
+              <div className="flex justify-between items-start">
                 <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-orange-500 block mb-1">
-                    FIBO SMART SPACE • FLOOR {currentRoom?.floor || "3"}
+                  <span className="text-xs font-black tracking-wider uppercase text-orange-600">
+                    FIBO SMART SPACE • FLOOR {selectedRoom?.floor || 2}
                   </span>
-                  <h2 className="text-5xl md:text-6xl font-extrabold text-slate-900 tracking-tight">
-                    {currentRoom?.id || "FIBO-301"}
+                  <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight mt-1">
+                    {selectedRoomId}
                   </h2>
-                  <p className="text-slate-500 text-sm mt-1">
-                    {currentRoom?.name || "ห้องประชุมและปฏิบัติการ"} • จุได้สูงสุด{" "}
-                    {currentRoom?.capacity || 8} คน
+                  <p className="text-xs font-semibold text-slate-400 mt-1 flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-slate-400" />
+                    จุได้สูงสุด {selectedRoom?.capacity || 40} คน
                   </p>
                 </div>
 
-                <div className="text-right bg-slate-50 px-5 py-3 rounded-2xl border border-slate-200">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl px-4 py-2.5 text-right">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                     เวลาปัจจุบัน (CURRENT TIME)
                   </span>
-                  <span className="text-3xl font-mono font-bold text-slate-800">
-                    {currentTime.toLocaleTimeString("th-TH", { hour12: false })}
+                  <span className="text-2xl font-black text-slate-800 font-mono">
+                    {currentTime.toLocaleTimeString("th-TH", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                      hour12: false,
+                    })}
                   </span>
                 </div>
               </div>
 
-              {/* กล่องสถานะใหญ่ */}
-              <div
-                className={`p-6 rounded-2xl border-2 ${
-                  isOccupied
-                    ? "bg-red-50/70 border-red-200 text-red-900"
-                    : isPendingCheckIn
-                    ? "bg-amber-50/70 border-amber-200 text-amber-900"
-                    : "bg-emerald-50/70 border-emerald-200 text-emerald-900"
-                }`}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <span
-                    className={`w-3.5 h-3.5 rounded-full animate-pulse ${
-                      isOccupied
-                        ? "bg-red-500"
-                        : isPendingCheckIn
-                        ? "bg-amber-500"
-                        : "bg-emerald-500"
-                    }`}
-                  />
-                  <h3 className="text-2xl md:text-3xl font-extrabold">
-                    {isOccupied
-                      ? "IN USE (กำลังใช้งาน)"
-                      : isPendingCheckIn
-                      ? "WAITING FOR CHECK-IN (รอสแกนเช็คอิน)"
-                      : "ROOM AVAILABLE (ห้องว่าง)"}
-                  </h3>
+              {/* ป้ายแสดงสถานะห้อง */}
+              <div className="mt-8">
+                {isOccupied ? (
+                  <div className="bg-rose-50 border-2 border-rose-300 rounded-2xl p-5 text-rose-800 flex items-center gap-4">
+                    <div className="w-4 h-4 rounded-full bg-rose-500 animate-ping"></div>
+                    <div>
+                      <p className="font-black text-lg">OCCUPIED (กำลังใช้งานห้อง)</p>
+                      <p className="text-xs text-rose-600 font-medium mt-0.5">
+                        {activeBooking.title}
+                      </p>
+                    </div>
+                  </div>
+                ) : isPendingCheckIn ? (
+                  <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5 text-amber-900 flex items-center gap-4">
+                    <div className="w-4 h-4 rounded-full bg-amber-500 animate-ping"></div>
+                    <div>
+                      <p className="font-black text-lg">WAITING FOR CHECK-IN (รอยืนยันสิทธิ์)</p>
+                      <p className="text-xs text-amber-700 font-medium mt-0.5">
+                        ถึงคิวการใช้งานแล้ว: {activeBooking.title} (กรุณาสแกน QR Code เพื่อเริ่มใช้งาน)
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-emerald-800 flex items-center gap-3.5">
+                    <div className="w-3.5 h-3.5 rounded-full bg-emerald-500"></div>
+                    <div>
+                      <p className="font-black text-base">ROOM AVAILABLE (ห้องว่าง)</p>
+                      <p className="text-xs text-emerald-600 font-medium mt-0.5">
+                        ห้องว่างพร้อมใช้งาน สามารถทำรายการจองผ่านเว็บไซต์ระบบ FIBO Smart Space
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ตารางการจองของห้องนี้ */}
+            <div className="pt-6 border-t border-slate-100">
+              <h4 className="text-xs font-bold text-slate-700 mb-3 flex items-center justify-between">
+                <span>ตารางการจองวันนี้ ({roomBookings.length} รายการ)</span>
+                <span className="text-[10px] text-slate-400">อัปเดตแบบอัตโนมัติ</span>
+              </h4>
+
+              {roomBookings.length === 0 ? (
+                <div className="bg-slate-50 rounded-xl p-4 text-center text-xs text-slate-400 font-medium">
+                  ยังไม่มีรายการจองสำหรับห้องนี้ในวันนี้
                 </div>
-
-                {activeBooking ? (
-                  <div className="mt-3 space-y-1 text-sm">
-                    <p className="font-semibold">
-                      ผู้จอง: {activeBooking.user_name || activeBooking.user_email || "นักศึกษา/บุคลากร"}
-                    </p>
-                    <p>
-                      ช่วงเวลา: <span className="font-mono font-bold">{activeBooking.start_time} - {activeBooking.end_time} น.</span>
-                    </p>
-                    {activeBooking.purpose && <p>หัวข้อ: {activeBooking.purpose}</p>}
-                  </div>
-                ) : (
-                  <p className="text-sm opacity-80">
-                    ห้องว่างพร้อมใช้งาน สามารถทำรายการจองผ่านเว็บไซต์ระบบ FIBO Smart Space
-                  </p>
-                )}
-              </div>
-
-              {/* รายการจองของห้องนี้ในวันนี้ */}
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
-                  ตารางการจองวันนี้ ({roomBookings.length} รายการ)
-                </h4>
-                {roomBookings.length === 0 ? (
-                  <div className="text-sm text-slate-400 bg-slate-50 rounded-xl p-4 border border-slate-100 text-center">
-                    ยังไม่มีรายการจองสำหรับห้องนี้ในวันนี้
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
-                    {roomBookings.map((b) => (
-                      <div
-                        key={b.id}
-                        className="flex items-center justify-between bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-200 text-sm"
-                      >
-                        <div>
-                          <span className="font-mono font-bold text-slate-800 mr-3">
-                            {b.start_time} - {b.end_time}
-                          </span>
-                          <span className="text-slate-600">
-                            {b.user_name || b.purpose || "มีการจองใช้งาน"}
-                          </span>
-                        </div>
-                        <span
-                          className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                            b.status === "checked_in"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-amber-100 text-amber-700"
-                          }`}
-                        >
-                          {b.status === "checked_in" ? "เช็คอินแล้ว" : "รอเช็คอิน"}
-                        </span>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {roomBookings.map((b) => (
+                    <div
+                      key={b.id}
+                      className="bg-slate-50 border border-slate-200/70 rounded-xl p-3 flex items-center justify-between text-xs"
+                    >
+                      <div>
+                        <p className="font-bold text-slate-800">{b.title}</p>
+                        <p className="text-[11px] text-slate-400">
+                          {b.start_time.includes("T")
+                            ? new Date(b.start_time).toLocaleTimeString("th-TH", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : b.start_time}{" "}
+                          -{" "}
+                          {b.end_time.includes("T")
+                            ? new Date(b.end_time).toLocaleTimeString("th-TH", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : b.end_time}
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      <span
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                          b.status === "checked_in"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : b.status === "completed"
+                            ? "bg-slate-200 text-slate-600"
+                            : "bg-amber-100 text-amber-700"
+                        }`}
+                      >
+                        {b.status === "checked_in"
+                          ? "ใช้งานอยู่"
+                          : b.status === "completed"
+                          ? "เสร็จสิ้น"
+                          : "รอเช็คอิน"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+          </div>
 
-            {/* ฝั่งขวา: กล่อง QR Code สำหรับสแกนเช็คอิน (5 คอลัมน์) */}
-            <div className="lg:col-span-5">
-              <div className="bg-slate-50 rounded-3xl p-8 border border-slate-200 flex flex-col items-center text-center">
-                {activeBooking ? (
-                  <>
-                    <span className="px-3 py-1 bg-orange-100 text-orange-600 text-xs font-bold rounded-full mb-3">
-                      SCAN TO CHECK-IN
-                    </span>
-                    <h3 className="text-xl font-bold text-slate-800 mb-1">
-                      สแกน QR Code เพื่อยืนยันเข้าใช้ห้อง
-                    </h3>
-                    <p className="text-xs text-slate-500 mb-5">
-                      กรุณาสแกนภายในเวลาที่กำหนดเพื่อรักษาสิทธิ์การจองห้อง {currentRoom?.id}
-                    </p>
-
-                    <div className="bg-white p-4 rounded-2xl shadow-md border border-slate-200 mb-4">
-                      <img
-                        src={qrImageUrl}
-                        alt="Check-in QR Code"
-                        className="w-56 h-56 object-contain"
-                      />
-                    </div>
-
-                    <p className="text-xs text-slate-400">
-                      รหัสการจอง: <span className="font-mono">{activeBooking.id?.slice(0, 8)}</span>
-                    </p>
-                  </>
-                ) : (
-                  <div className="py-10 flex flex-col items-center">
-                    <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mb-4">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                    <h3 className="text-xl font-bold text-slate-800 mb-2">
-                      ห้องว่างพร้อมใช้งาน
-                    </h3>
-                    <p className="text-sm text-slate-500 max-w-xs leading-relaxed mb-6">
-                      เมื่อถึงเวลาที่มีคิวจอง ระบบจะแสดง QR Code ที่หน้าจอนี้โดยอัตโนมัติเพื่อให้ผู้จองสแกนเข้าใช้งาน
-                    </p>
-                    <div className="text-xs text-emerald-600 font-semibold flex items-center gap-1.5 bg-emerald-50 px-3.5 py-2 rounded-full border border-emerald-200">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                      เชื่อมต่อฐานข้อมูล Realtime แล้ว
-                    </div>
-                  </div>
-                )}
+          {/* ฝั่งขวา: กล่องแสดง QR Code หรือ สถานะห้องว่าง (5 Columns) */}
+          <div className="lg:col-span-5 p-8 md:p-10 bg-slate-50/60 flex flex-col items-center justify-center text-center space-y-4">
+            {isPendingCheckIn ? (
+              <div className="space-y-4 animate-in fade-in zoom-in-95 duration-300">
+                <div className="bg-white p-4 rounded-3xl shadow-xl border border-orange-200 inline-block">
+                  <img
+                    src={qrCodeUrl}
+                    alt="Check-in QR Code"
+                    className="w-56 h-56 rounded-xl mx-auto"
+                  />
+                </div>
+                <div>
+                  <span className="inline-flex items-center gap-1.5 bg-orange-100 text-[#EA580C] px-3 py-1 rounded-full text-xs font-black">
+                    <QrCode className="w-3.5 h-3.5" /> สแกนเพื่อเช็คอินเข้าห้อง
+                  </span>
+                  <p className="text-xs text-slate-500 mt-2 max-w-xs">
+                    เปิดเมนู <strong>Check In</strong> บนมือถือของคุณ แล้วเปิดกล้องสแกน QR Code
+                    บนจอนี้เพื่อยืนยันสิทธิ์
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : isOccupied ? (
+              <div className="space-y-3">
+                <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-md shadow-emerald-500/10">
+                  <DoorOpen className="w-10 h-10" />
+                </div>
+                <h3 className="text-xl font-black text-slate-800">ห้องกำลังถูกใช้งาน</h3>
+                <p className="text-xs text-slate-500 max-w-xs leading-relaxed">
+                  ผู้จองได้ทำการเช็คอินยืนยันตัวตนเรียบร้อยแล้ว หากต้องการใช้งานห้องนี้
+                  สามารถจองในรอบเวลาถัดไป
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <h3 className="text-base font-bold text-slate-800">ห้องว่างพร้อมใช้งาน</h3>
+                <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
+                  เมื่อถึงเวลาที่มีคิวจอง ระบบจะแสดง QR Code
+                  ที่หน้าจอนี้โดยอัตโนมัติเพื่อให้ผู้จองสแกนเข้าใช้งาน
+                </p>
+                <div className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-3 py-1.5 rounded-full text-[11px] font-bold">
+                  <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-500" />
+                  เชื่อมต่อฐานข้อมูล Realtime แล้ว
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>

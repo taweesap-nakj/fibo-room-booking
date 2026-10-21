@@ -9,20 +9,28 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Search, Bell, Layers, Clock, Zap, X, Users,
-  LogOut, Sparkles, Tablet,
-  CalendarRange, AlertCircle, KeyRound, Monitor
+  LogOut, Sparkles, CalendarRange, AlertCircle, KeyRound, Monitor
 } from "lucide-react";
+
+// สร้างตัวเลือกเวลาแบบ 24 ชั่วโมง ทุกๆ 30 นาที (08:00 - 22:00)
+const TIME_OPTIONS = [
+  "08:00", "08:30", "09:00", "09:30", "10:00", "10:30",
+  "11:00", "11:30", "12:00", "12:30", "13:00", "13:30",
+  "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
+  "17:00", "17:30", "18:00", "18:30", "19:00", "19:30",
+  "20:00", "20:30", "21:00", "21:30", "22:00"
+];
 
 function getNextHourString(): string {
   const d = new Date();
-  d.setHours(d.getHours() + 1);
+  d.setHours(d.getHours() + 1, 0, 0, 0);
   const hh = String(d.getHours()).padStart(2, "0");
   return `${hh}:00`;
 }
 
 function getNextTwoHoursString(): string {
   const d = new Date();
-  d.setHours(d.getHours() + 2);
+  d.setHours(d.getHours() + 2, 0, 0, 0);
   const hh = String(d.getHours()).padStart(2, "0");
   return `${hh}:00`;
 }
@@ -30,7 +38,6 @@ function getNextTwoHoursString(): string {
 export default function HomePage() {
   const router = useRouter();
 
-  // State ตรวจสอบการเข้าสู่ระบบ
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -48,29 +55,24 @@ export default function HomePage() {
   // Modal State
   const [modalRoom, setModalRoom] = useState<Room | null>(null);
   const [formTitle, setFormTitle] = useState("ประชุมโปรเจกต์กลุ่ม");
-  const [formStart, setFormStart] = useState("");
-  const [formEnd, setFormEnd] = useState("");
+  const [formStart, setFormStart] = useState("09:00");
+  const [formEnd, setFormEnd] = useState("10:00");
   const [formPeople, setFormPeople] = useState(4);
   const [formName, setFormName] = useState("Thawisap N.");
-  const [formEmail, setFormEmail] = useState("thawisap@fibo.kmutt.ac.th");
 
-  // ตรวจสอบสิทธิ์การเข้าใช้งานและดึงข้อมูล
   const checkAuthAndFetchData = async () => {
     try {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      // ถ้าไม่มี Session การล็อกอิน ให้ดีดไปหน้า /login ทันที
       if (!session?.user) {
         router.replace("/login");
         return;
       }
 
-      // ถ้าล็อกอินแล้ว ให้ปลดล็อกหน้าจอ
       setIsAuthChecking(false);
 
-      // ตรวจสอบสิทธิ์ Admin
       if (session.user.email === "admin@fibo.kmutt.ac.th") {
         setIsAdmin(true);
       } else {
@@ -87,51 +89,51 @@ export default function HomePage() {
         }
       }
 
-      // ดึงข้อมูลห้อง
       const { data: roomsData } = await supabase
         .from("rooms")
         .select("*")
         .order("id");
 
-      // ดึงข้อมูลการจอง
       const { data: bookingsData } = await supabase
         .from("bookings")
         .select("*")
         .order("created_at", { ascending: false });
 
       if (roomsData) {
-        const mappedRooms: Room[] = roomsData.map((r: any) => ({
-          id: r.id,
-          floor: r.floor,
-          capacity: r.capacity,
-          type: r.type,
-          status: r.status,
-          nextAvailable: r.next_available,
-          description: r.description,
-          amenities: r.amenities || [],
-        }));
-        setRooms(mappedRooms);
+        setRooms(
+          roomsData.map((r: any) => ({
+            id: r.id,
+            floor: r.floor,
+            capacity: r.capacity,
+            type: r.type,
+            status: r.status,
+            nextAvailable: r.next_available,
+            description: r.description,
+            amenities: r.amenities || [],
+          }))
+        );
       }
 
       if (bookingsData) {
-        const mappedBookings: Booking[] = bookingsData.map((b: any) => ({
-          id: b.id,
-          room: b.room_id,
-          floor: 0,
-          title: b.title,
-          date: b.date,
-          startTime: b.start_time,
-          endTime: b.end_time,
-          durationHours: Number(b.duration_hours),
-          people: b.people,
-          bookedBy: b.booked_by,
-          email: b.email,
-          amenities: [],
-          status: b.status,
-          checkedInAt: b.checked_in_at,
-          expiresAt: b.expires_at,
-        }));
-        setBookings(mappedBookings);
+        setBookings(
+          bookingsData.map((b: any) => ({
+            id: b.id,
+            room: b.room_id,
+            floor: 0,
+            title: b.title,
+            date: b.date,
+            startTime: b.start_time,
+            endTime: b.end_time,
+            durationHours: Number(b.duration_hours),
+            people: b.people,
+            bookedBy: b.booked_by,
+            email: b.email,
+            amenities: [],
+            status: b.status,
+            checkedInAt: b.checked_in_at,
+            expiresAt: b.expires_at,
+          }))
+        );
       }
     } catch (err) {
       console.error("Error fetching data:", err);
@@ -143,14 +145,12 @@ export default function HomePage() {
   useEffect(() => {
     checkAuthAndFetchData();
 
-    // ฟังสถานะ Login/Logout ถ้ามีการออกจากระบบให้ดีดกลับไปหน้า Login ทันที
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_OUT" || !session) {
         router.replace("/login");
       }
     });
 
-    // สมัครรับการเปลี่ยนแปลงแบบ Real-time จาก Supabase
     const channel = supabase
       .channel("public-db-changes")
       .on(
@@ -198,10 +198,8 @@ export default function HomePage() {
     if (!start || !end) return 0;
     const [startH, startM] = start.split(":").map(Number);
     const [endH, endM] = end.split(":").map(Number);
-    const startTotalMinutes = startH * 60 + (startM || 0);
-    const endTotalMinutes = endH * 60 + (endM || 0);
-    const diffHours = (endTotalMinutes - startTotalMinutes) / 60;
-    return Number(diffHours.toFixed(1));
+    const diffMinutes = (endH * 60 + endM) - (startH * 60 + startM);
+    return Number((diffMinutes / 60).toFixed(1));
   };
 
   const selectedDuration = calculateSelectedDuration(formStart, formEnd);
@@ -243,11 +241,6 @@ export default function HomePage() {
   const handleConfirmBooking = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     if (!modalRoom || !canSubmitBooking) return;
-
-    if (!bookingDate || !formStart || !formEnd) {
-      alert("กรุณาระบุวันที่และช่วงเวลาให้ครบถ้วน");
-      return;
-    }
 
     setIsLoading(true);
     try {
@@ -331,7 +324,6 @@ export default function HomePage() {
     );
   };
 
-  // หน้าจอดักแสดงผลชั่วคราวระหว่างตรวจสิทธิ์ หากยังไม่ได้ Login จะค้างหน้านี้แล้วเด้งไปหน้า /login ทันที
   if (isAuthChecking) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white space-y-4">
@@ -345,9 +337,9 @@ export default function HomePage() {
 
   return (
     <>
-      {/* Top Header */}
-      <header className="px-4 sm:px-6 lg:px-8 py-3.5 bg-white/80 backdrop-blur-xl border-b border-slate-200/70 flex items-center justify-between sticky top-0 z-20">
-        <div className="relative flex-1 max-w-md mr-4">
+      {/* Top Header จัดลำดับใหม่: ค้นหา -> ปุ่ม Admin -> โควตา -> เวลา -> แจ้งเตือน -> เมนู Profile/Logout (ขวาสุด) */}
+      <header className="px-4 sm:px-6 lg:px-8 py-3 bg-white/85 backdrop-blur-xl border-b border-slate-200/70 flex items-center justify-between sticky top-0 z-20">
+        <div className="relative flex-1 max-w-sm mr-4">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
@@ -371,33 +363,32 @@ export default function HomePage() {
 
           <div className="hidden md:flex items-center gap-2 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200/70 px-3.5 py-1.5 rounded-full text-xs">
             <Clock className="w-3.5 h-3.5 text-orange-600" />
-            <span className="text-slate-600 font-medium">โควตาคงเหลือ:</span>
+            <span className="text-slate-600 font-medium">โควตา:</span>
             <span className={`font-black ${remainingQuota === 0 ? "text-rose-600" : "text-orange-600"}`}>
-              {remainingQuota} / 4 ชม.
+              {remainingQuota}/4 ชม.
             </span>
           </div>
-          <UserNav />
 
-          <div className="text-right">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hidden sm:block">เวลาจริง</p>
-            <p className="text-base sm:text-lg font-black text-slate-800 leading-none font-mono">
+          <div className="text-right border-l pl-3 sm:pl-4 border-slate-200">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hidden sm:block">เวลาจริง (24H)</p>
+            <p className="text-sm sm:text-base font-black text-slate-800 leading-none font-mono">
               {currentTime || "--:--:--"}
             </p>
           </div>
 
-          <div className="flex items-center gap-2 border-l pl-3 sm:pl-4 border-slate-200">
-            <Link
-              href="/my-booking"
-              className="relative p-2 text-slate-600 hover:bg-orange-50 hover:text-orange-600 rounded-full transition-all"
-            >
-              <Bell className="w-5 h-5" />
-              {activeBookings.length > 0 && (
-                <span className="w-2.5 h-2.5 bg-orange-600 rounded-full absolute top-1.5 right-1.5 ring-2 ring-white animate-pulse"></span>
-              )}
-            </Link>
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#EA580C] to-[#F97316] text-white flex items-center justify-center font-bold text-xs shadow-sm">
-              TN
-            </div>
+          <Link
+            href="/my-booking"
+            className="relative p-2 text-slate-600 hover:bg-orange-50 hover:text-orange-600 rounded-full transition-all"
+          >
+            <Bell className="w-5 h-5" />
+            {activeBookings.length > 0 && (
+              <span className="w-2.5 h-2.5 bg-orange-600 rounded-full absolute top-1.5 right-1.5 ring-2 ring-white animate-pulse"></span>
+            )}
+          </Link>
+
+          {/* UserNav อยู่ตำแหน่งขวาสุดของ Header แล้ว */}
+          <div className="pl-1">
+            <UserNav />
           </div>
         </div>
       </header>
@@ -633,7 +624,7 @@ export default function HomePage() {
         </div>
       </main>
 
-      {/* Modal Popup จองห้อง */}
+      {/* Modal Popup จองห้องพร้อม Dropdown เวลา 24 ชม. */}
       {modalRoom && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100 text-slate-800">
@@ -662,39 +653,49 @@ export default function HomePage() {
                 />
               </div>
 
-              {/* ช่องเลือกวันที่ใช้งาน */}
-              <div className="mb-2.5">
-                <label className="font-bold text-slate-700 block mb-1 text-xs">วันที่ต้องการใช้งาน</label>
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">วันที่ต้องการใช้งาน</label>
                 <input
                   type="date"
                   min={new Date().toISOString().split("T")[0]}
                   value={bookingDate}
                   onChange={(e) => setBookingDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold"
                 />
               </div>
+
+              {/* ปรับเป็น Dropdown 24 ชม. */}
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">เวลาเริ่ม</label>
-                  <input
-                    type="time"
+                  <label className="font-bold text-slate-700 block mb-1">เวลาเริ่ม (24 ชม.)</label>
+                  <select
                     value={formStart}
                     onChange={(e) => setFormStart(e.target.value)}
-                    className="w-full bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-bold border border-slate-200 rounded-xl p-2.5 outline-none focus:border-orange-500 transition-colors"
-                  />
+                    className="w-full bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-bold border border-slate-200 rounded-xl p-2.5 outline-none focus:border-orange-500 cursor-pointer"
+                  >
+                    {TIME_OPTIONS.map((time) => (
+                      <option key={`start-${time}`} value={time}>
+                        {time} น.
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">เวลาสิ้นสุด</label>
-                  <input
-                    type="time"
+                  <label className="font-bold text-slate-700 block mb-1">เวลาสิ้นสุด (24 ชม.)</label>
+                  <select
                     value={formEnd}
                     onChange={(e) => setFormEnd(e.target.value)}
-                    className="w-full bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-bold border border-slate-200 rounded-xl p-2.5 outline-none focus:border-orange-500 transition-colors"
-                  />
+                    className="w-full bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-bold border border-slate-200 rounded-xl p-2.5 outline-none focus:border-orange-500 cursor-pointer"
+                  >
+                    {TIME_OPTIONS.map((time) => (
+                      <option key={`end-${time}`} value={time}>
+                        {time} น.
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
-              {/* ป้ายเตือนเงื่อนไขโควตา & ชนเวลา & เวลาย้อนหลัง */}
               <div
                 className={`p-3.5 rounded-2xl border flex items-start gap-2.5 ${
                   canSubmitBooking
@@ -713,7 +714,7 @@ export default function HomePage() {
 
                   {isPastTime && (
                     <p className="text-[11px] font-bold text-rose-600">
-                      ⚠️ ไม่สามารถจองเวลาย้อนหลังได้ (เวลาปัจจุบันคือ {currentTime || "ขณะนี้"})
+                      ⚠️ ไม่สามารถจองเวลาย้อนหลังได้
                     </p>
                   )}
 
@@ -740,7 +741,7 @@ export default function HomePage() {
                     max={modalRoom.capacity}
                     value={formPeople}
                     onChange={(e) => setFormPeople(Number(e.target.value))}
-                    className="w-full bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-bold border border-slate-200 rounded-xl p-2.5 outline-none focus:border-orange-500 transition-colors"
+                    className="w-full bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-bold border border-slate-200 rounded-xl p-2.5 outline-none focus:border-orange-500"
                   />
                 </div>
                 <div>
@@ -749,7 +750,7 @@ export default function HomePage() {
                     type="text"
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    className="w-full bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-semibold border border-slate-200 rounded-xl p-2.5 outline-none focus:border-orange-500 transition-colors"
+                    className="w-full bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-semibold border border-slate-200 rounded-xl p-2.5 outline-none focus:border-orange-500"
                   />
                 </div>
               </div>
