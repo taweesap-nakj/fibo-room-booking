@@ -13,7 +13,7 @@ export async function createBooking({
   endTime: string;
   attendees: number;
 }) {
-  // 1. ดึงข้อมูล User ที่กำลังล็อกอินอยู่จริง ณ ขณะนั้น
+  // ดึงข้อมูล User ที่กำลังล็อกอินอยู่จริง
   const {
     data: { user },
     error: authError,
@@ -23,15 +23,13 @@ export async function createBooking({
     throw new Error("กรุณาเข้าสู่ระบบก่อนทำรายการจอง");
   }
 
-  // 2. คำนวณระยะเวลาใช้งาน
+  // คำนวณระยะเวลาใช้งาน
   const start = new Date(startTime).getTime();
   const end = new Date(endTime).getTime();
   const durationHours = Math.max(0.5, Number(((end - start) / (1000 * 60 * 60)).toFixed(1)));
   const bookingDate = startTime.split("T")[0];
-  const startTimeStr = startTime.split("T")[1].substring(0, 5);
-  const endTimeStr = endTime.split("T")[1].substring(0, 5);
 
-  // 3. บันทึกข้อมูลโดยผูกกับ user.email และ user.id ของบัญชีนั้นโดยตรง
+  // ส่ง start_time และ end_time เป็น ISO Timestamp เต็มรูปแบบเพื่อให้ตรงกับ timestamp with time zone
   const { data, error } = await supabase
     .from("bookings")
     .insert([
@@ -39,8 +37,8 @@ export async function createBooking({
         room_id: roomId,
         title: title || "การใช้งานห้อง",
         date: bookingDate,
-        start_time: startTimeStr,
-        end_time: endTimeStr,
+        start_time: startTime,
+        end_time: endTime,
         duration_hours: durationHours,
         people: attendees,
         booked_by: user.user_metadata?.full_name || user.email?.split("@")[0] || "ผู้ใช้งาน",
