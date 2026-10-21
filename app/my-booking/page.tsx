@@ -29,9 +29,18 @@ export default function MyBookingsPage() {
   // ดึงข้อมูลการจองของผู้ใช้ปัจจุบัน
   const fetchBookings = async () => {
     try {
+      // 1. ดึงข้อมูล Session ของคนที่ล็อกอินอยู่
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.email) {
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. ดึงเฉพาะรายการจองที่ตรงกับอีเมลของคนนี้
       const { data, error } = await supabase
         .from("bookings")
         .select("*")
+        .eq("email", session.user.email)
         .order("start_time", { ascending: false });
       console.log("Supabase bookings raw data:", data);
       console.log("Supabase fetch error:", error);

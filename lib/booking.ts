@@ -1,12 +1,4 @@
-import { supabase } from "@/lib/supabase";
-
-export interface BookingPayload {
-  roomId: string;
-  title: string;
-  startTime: string; // ISO String (มีทั้งวันและเวลา เช่น 2026-10-18T10:00:00.000Z)
-  endTime: string;   // ISO String
-  attendees: number;
-}
+import { supabase } from "./supabase";
 
 export async function createBooking({
   roomId,
@@ -14,107 +6,54 @@ export async function createBooking({
   startTime,
   endTime,
   attendees,
-}: BookingPayload) {
-  // 1. ตรวจสอบข้อมูลผู้ใช้
+}: {
+  roomId: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  attendees: number;
+}) {
+  // 1. ดึงข้อมูล User ที่กำลังล็อกอินอยู่จริง ณ ขณะนั้น
   const {
     data: { user },
-    error: userError,
+    error: authError,
   } = await supabase.auth.getUser();
 
-  if (userError || !user) {
+  if (authError || !user) {
     throw new Error("กรุณาเข้าสู่ระบบก่อนทำรายการจอง");
   }
 
-  // 2. ตรวจสอบเงื่อนไขวันและเวลา
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  const now = new Date();
+  // 2. คำนวณระยะเวลาใช้งาน
+  const start = new Date(startTime).getTime();
+  const end = new Date(endTime).getTime();
+  const durationHours = Math.max(0.5, Number(((end - start) / (1000 * 60 * 60)).toFixed(1)));
+  const bookingDate = startTime.split("T")[0];
+  const startTimeStr = startTime.split("T")[1].substring(0, 5);
+  const endTimeStr = endTime.split("T")[1].substring(0, 5);
 
-  if (end <= start) {
-    throw new Error("เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มต้น");
-  }
-
-  // ป้องกันการจองย้อนหลังในอดีต (อนุญาตให้จองล่วงหน้าได้)
-  if (start < new Date(now.getTime() - 5 * 60 * 1000)) {
-    throw new Error("ไม่สามารถเลือกเวลาเริ่มต้นในอดีตได้");
-  }
-
-  // 3. ตรวจสอบ/สร้างข้อมูลโปรไฟล์ผู้ใช้
-  let { data: profile, error: selectProfileError } = await supabase
-    .from("profiles")
-    .select("remaining_quota")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!profile) {
-    // ถ้ายังไม่มีแถวข้อมูล ให้สร้างใหม่
-    const { data: newProfile, error: insertError } = await supabase
-      .from("profiles")
-      .upsert({
-        id: user.id,
+  // 3. บันทึกข้อมูลโดยผูกกับ user.email และ user.id ของบัญชีนั้นโดยตรง
+  const { data, error } = await supabase
+    .from("bookings")
+    .insert([
+      {
+        room_id: roomId,
+        title: title || "การใช้งานห้อง",
+        date: bookingDate,
+        start_time: startTimeStr,
+        end_time: endTimeStr,
+        duration_hours: durationHours,
+        people: attendees,
+        booked_by: user.user_metadata?.full_name || user.email?.split("@")[0] || "ผู้ใช้งาน",
         email: user.email,
-        remaining_quota: 4,
-      })
-      .select("remaining_quota")
-      .single();
+        user_id: user.id,
+        status: "pending",
+      },
+    ])
+    .select();
 
-    if (insertError) {
-      console.error("Profile Upsert Error:", insertError);
-      throw new Error(`ไม่สามารถสร้างโปรไฟล์ได้: ${insertError.message}`);
-    }
-    profile = newProfile;
+  if (error) {
+    throw new Error(error.message);
   }
 
-  if ((profile?.remaining_quota ?? 0) <= 0) {
-    throw new Error("โควตาการจองของคุณหมดแล้ว");
-  }
-
-  // 4. ตรวจสอบการจองเวลาทับซ้อน (Overlap Check)
-  // เช็คเฉพาะรายการที่ไม่ใช่ 'cancelled' หรือ 'expired'
-  const { data: conflicts, error: conflictError } = await supabase
-    .from("bookings")
-    .select("id")
-    .eq("room_id", roomId)
-    .not("status", "in", '("cancelled","expired")')
-    .lt("start_time", endTime)
-    .gt("end_time", startTime);
-
-  if (conflictError) {
-    throw new Error("เกิดข้อผิดพลาดในการตรวจสอบห้องว่าง");
-  }
-
-  if (conflicts && conflicts.length > 0) {
-    throw new Error("ห้องนี้ถูกจองไปแล้วในช่วงเวลาดังกล่าว กรุณาเลือกช่วงเวลาอื่น");
-  }
-
-  // คำนวณเส้นตายเช็คอิน (ภายใน 15 นาทีหลังจากถึงเวลาเริ่มต้น)
-  const checkInDeadline = new Date(start.getTime() + 15 * 60 * 1000).toISOString();
-
-  // 5. บันทึกข้อมูลการจอง
-  const { data: booking, error: bookingError } = await supabase
-    .from("bookings")
-    .insert({
-      room_id: roomId,
-      user_id: user.id,
-      title,
-      start_time: startTime,
-      end_time: endTime,
-      attendees,
-      status: "pending_checkin", // สถานะรอเช็คอินหน้าห้อง
-      check_in_deadline: checkInDeadline,
-    })
-    .select()
-    .single();
-
-  if (bookingError) {
-    throw new Error(bookingError.message || "ไม่สามารถบันทึกการจองได้");
-  }
-
-  // 6. หักโควตา
-  await supabase
-    .from("profiles")
-    .update({ remaining_quota: profile.remaining_quota - 1 })
-    .eq("id", user.id);
-
-  return booking;
+  return data;
 }
