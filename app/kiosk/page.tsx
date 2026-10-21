@@ -84,34 +84,37 @@ useEffect(() => {
     }
   };
 
-  const fetchBookings = async () => {
+const fetchBookings = async () => {
     try {
       // 1. ตรวจสอบและตัดรายการหมดอายุทิ้งทันที
       await autoReleaseExpiredBookings();
+
+      if (!selectedRoomId) return;
+
+      const todayStr = new Date().toISOString().split("T")[0];
 
       // 2. ดึงการจองของห้องนี้ โดยไม่เอารายการที่ถูกยกเลิก (cancelled)
       const { data: bookingsData, error } = await supabase
         .from("bookings")
         .select("*")
-        .eq("room_id", roomId) // หรือ currentRoom.id
+        .eq("room_id", selectedRoomId)
         .eq("date", todayStr)
-        .neq("status", "cancelled") // กรองรายการที่ถูกยกเลิกออกไป
+        .neq("status", "cancelled")
         .order("start_time", { ascending: true });
 
       if (error) throw error;
 
-      // กรองเฉพาะรายการที่ยังไม่หมดเวลา (หรือเป็นรายการปัจจุบัน/อนาคต)
+      // กรองเฉพาะรายการที่ยังไม่หมดเวลา
       const nowMs = Date.now();
-      const validBookings = (bookingsData || []).filter((b) => {
+      const validBookings = (bookingsData || []).filter((b: any) => {
         let endMs = new Date(b.end_time).getTime();
         if (isNaN(endMs) && b.date && b.end_time) {
           endMs = new Date(`${b.date}T${b.end_time}:00`).getTime();
         }
-        // ไม่เอารายการที่สิ้นสุดไปแล้ว
         return isNaN(endMs) ? true : endMs > nowMs;
       });
 
-      setTodayBookings(validBookings);
+      setBookings(validBookings);
     } catch (err) {
       console.error("Kiosk fetch error:", err);
     }
@@ -119,7 +122,6 @@ useEffect(() => {
 
   useEffect(() => {
     fetchRooms();
-    fetchKioskData()
 
     // ตัวจับเวลานาฬิกาเดินทุกวินาที
     const timer = setInterval(() => {
@@ -143,7 +145,7 @@ useEffect(() => {
 
     // สำรองดึงข้อมูลซ้ำทุก 10 วินาที
     const pollInterval = setInterval(() => {
-      fetchBookings();
+      fetchBookings()
     }, 10000);
 
     return () => {
