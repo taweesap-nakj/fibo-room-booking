@@ -1,6 +1,8 @@
 "use client";
-export const dynamic = 'force-dynamic';
-import { useState, useEffect, useRef } from "react";
+
+export const dynamic = "force-dynamic";
+
+import { useState, useEffect, useRef, Suspense } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -34,7 +36,7 @@ interface BookingItem {
   expiresAt: string | null;
 }
 
-export default function CheckInPage() {
+function CheckInContent() {
   const searchParams = useSearchParams();
   const urlBookingId = searchParams.get("booking_id");
   const urlRoomId = searchParams.get("room");
@@ -385,5 +387,19 @@ export default function CheckInPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function CheckInPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 text-slate-500 text-sm font-medium">
+          กำลังเตรียมข้อมูลระบบเช็คอิน...
+        </div>
+      }
+    >
+      <CheckInContent />
+    </Suspense>
   );
 }
