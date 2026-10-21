@@ -1,332 +1,341 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
-import { Building2, ArrowLeft, QrCode, Clock, Calendar, Users, XCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  Calendar,
+  Clock,
+  ArrowLeft,
+  Users,
+  AlertCircle,
+  Building2,
+  Trash2,
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
+  Mail,
+  User,
+  Filter,
+} from "lucide-react";
 
 interface BookingItem {
   id: string;
-  room: string;
-  floor: number;
+  room_id: string;
   title: string;
   date: string;
-  startTime: string;
-  endTime: string;
-  durationHours: number;
+  start_time: string;
+  end_time: string;
+  duration_hours: number;
   people: number;
-  bookedBy: string;
+  booked_by: string;
+  email: string;
   status: string;
-  checkedInAt: string | null;
-  expiresAt: string | null;
+  created_at: string;
 }
 
-export default function MyBookingsPage() {
+export default function BookingsManagementPage() {
+  const router = useRouter();
   const [bookings, setBookings] = useState<BookingItem[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [filteredBookings, setFilteredBookings] = useState<BookingItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
-  // ดึงข้อมูลการจองของผู้ใช้ปัจจุบัน
-  const fetchBookings = async () => {
+  const fetchBookingsData = async () => {
     try {
-      // 1. ดึงข้อมูล Session ของคนที่ล็อกอินอยู่
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.email) {
-        setIsLoading(false);
+      setIsLoading(true);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.user) {
+        router.replace("/login");
         return;
       }
 
-      // 2. ดึงเฉพาะรายการจองที่ตรงกับอีเมลของคนนี้
-      const { data, error } = await supabase
-        .from("bookings")
-        .select("*")
-        .eq("email", session.user.email)
-        .order("start_time", { ascending: false });
-      console.log("Supabase bookings raw data:", data);
-      console.log("Supabase fetch error:", error);
-      if (error) {
-        console.error("Fetch bookings error:", error);
-        return;
+      const email = session.user.email || "";
+      setUserEmail(email);
+
+      // ตรวจสอบสิทธิ์ Admin
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", session.user.id)
+        .single();
+
+      const admin =
+        email === "admin@fibo.kmutt.ac.th" ||
+        profile?.role === "admin" ||
+        session.user.user_metadata?.role === "admin";
+      setIsAdmin(admin);
+
+      // ดึงข้อมูล: ถ้าเป็น Admin ดึงของทุกคน, ถ้าเป็น User ดึงเฉพาะของตัวเอง
+      let query = supabase.from("bookings").select("*").order("start_time", { ascending: false });
+
+      if (!admin) {
+        query = query.eq("email", email);
       }
+
+      const { data, error } = await query;
+      if (error) throw error;
 
       if (data) {
-        setBookings(
-          data.map((b: any) => {
-            const start = new Date(b.start_time);
-            const end = new Date(b.end_time);
-            const duration = Math.max(
-              0,
-              (end.getTime() - start.getTime()) / (1000 * 60 * 60)
-            );
-
-            return {
-              id: b.id,
-              room: b.room_id,
-              floor: 0,
-              title: b.title || "การประชุม",
-              date: b.start_time ? b.start_time.split("T")[0] : "",
-              startTime: b.start_time,
-              endTime: b.end_time,
-              durationHours: duration,
-              people: b.attendees || 1,
-              bookedBy: "ฉัน",
-              status: b.status,
-              checkedInAt: b.checked_in_at,
-              expiresAt: b.check_in_deadline,
-            };
-          })
-        );
+        setBookings(data);
+        setFilteredBookings(data);
       }
     } catch (err) {
-      console.error("Error fetching bookings:", err);
+      console.error("Fetch bookings error:", err);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchBookings();
+    fetchBookingsData();
+  }, [router]);
 
-    // ฟัง Realtime event จากตาราง bookings
-    const channel = supabase
-      .channel("mybooking-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "bookings" },
-        () => {
-          fetchBookings();
-        }
-      )
-      .subscribe();
+  // ตัวกรองสถานะ
+  useEffect(() => {
+    if (statusFilter === "all") {
+      setFilteredBookings(bookings);
+    } else {
+      setFilteredBookings(bookings.filter((b) => b.status === statusFilter));
+    }
+  }, [statusFilter, bookings]);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+  // ฟังก์ชันยกเลิกการจอง
+  const handleCancelBooking = async (booking: BookingItem) => {
+    const confirmMsg = isAdmin
+      ? `คุณต้องการยกเลิกการจองห้อง ${booking.room_id} ของคุณ ${booking.booked_by} (${booking.email}) ใช่หรือไม่?`
+      : `คุณต้องการยกเลิกการจองห้อง ${booking.room_id} ใช่หรือไม่?`;
 
-  // ยกเลิกการจอง
-  const handleCancelBooking = async (bookingId: string) => {
-    if (!confirm("คุณต้องการยกเลิกการจองนี้ใช่หรือไม่?")) return;
+    if (!confirm(confirmMsg)) return;
 
-    setCancellingId(bookingId);
+    setActionLoadingId(booking.id);
     try {
-      const { error } = await supabase
+      // 1. อัปเดตสถานะการจองเป็น cancelled
+      const { error: bookingErr } = await supabase
         .from("bookings")
         .update({ status: "cancelled" })
-        .eq("id", bookingId);
+        .eq("id", booking.id);
 
-      if (error) {
-        alert("ไม่สามารถยกเลิกการจองได้: " + error.message);
-      } else {
-        await fetchBookings();
-      }
+      if (bookingErr) throw bookingErr;
+
+      // 2. ถ้าห้องนั้นติดสถานะ in_use หรือ pending ให้ปล่อยห้องว่าง
+      await supabase
+        .from("rooms")
+        .update({ status: "available", next_available: "Now" })
+        .eq("id", booking.room_id);
+
+      // ดึงข้อมูลใหม่
+      await fetchBookingsData();
     } catch (err: any) {
-      alert("เกิดข้อผิดพลาด: " + err.message);
+      alert("ไม่สามารถยกเลิกได้: " + err.message);
     } finally {
-      setCancellingId(null);
+      setActionLoadingId(null);
     }
   };
 
-  // แยกรายการที่กำลังดำเนินการ และ ประวัติที่ผ่านมา
-  const activeBookings = bookings.filter(
-    (b) =>
-      b.status === "pending" ||
-      b.status === "pending_checkin" ||
-      b.status === "checked_in"
-  );
-
-  const pastBookings = bookings.filter(
-    (b) =>
-      b.status === "completed" ||
-      b.status === "cancelled" ||
-      b.status === "expired"
-  );
-
-  // คำนวณชั่วโมงที่ใช้ไป
-  const usedHours = Number(
-    activeBookings.reduce((sum, b) => sum + b.durationHours, 0).toFixed(1)
-  );
-  const remainingQuota = Number(Math.max(0, 4 - usedHours).toFixed(1));
-
-  // ฟังก์ชันจัดฟอร์แมตเวลาแสดงผล
-  const formatTimeRange = (startIso: string, endIso: string) => {
-    try {
-      const start = new Date(startIso);
-      const end = new Date(endIso);
-      const startStr = start.toLocaleTimeString("th-TH", {
+  const formatDisplayTime = (isoOrTime: string) => {
+    if (!isoOrTime) return "--:--";
+    if (isoOrTime.includes("T")) {
+      return new Date(isoOrTime).toLocaleTimeString("th-TH", {
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
       });
-      const endStr = end.toLocaleTimeString("th-TH", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      });
-      return `${startStr} - ${endStr}`;
-    } catch {
-      return "-";
+    }
+    return isoOrTime;
+  };
+
+  const renderStatusBadge = (status: string) => {
+    switch (status) {
+      case "checked_in":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> เช็คอินแล้ว (In Use)
+          </span>
+        );
+      case "pending":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+            <Clock className="w-3.5 h-3.5 text-amber-600" /> รอเช็คอิน (Pending)
+          </span>
+        );
+      case "completed":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+            คืนห้องแล้ว (Completed)
+          </span>
+        );
+      case "cancelled":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
+            <XCircle className="w-3.5 h-3.5 text-rose-500" /> ยกเลิกแล้ว (Cancelled)
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700">
+            {status}
+          </span>
+        );
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-100 p-4 sm:p-8 font-sans">
+      <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800">My Bookings</h1>
-            <p className="text-sm text-slate-500">
-              จัดการรายการจอง ตรวจสอบสถานะการเช็คอิน หรือยกเลิกสิทธิ์
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                  isAdmin
+                    ? "bg-purple-100 text-purple-800"
+                    : "bg-orange-100 text-orange-800"
+                }`}
+              >
+                {isAdmin ? "Admin Overview" : "Personal Bookings"}
+              </span>
+              {isAdmin && (
+                <span className="flex items-center gap-1 text-[11px] font-bold text-slate-500">
+                  <ShieldCheck className="w-3.5 h-3.5 text-purple-600" /> สิทธิ์ผู้ดูแลระบบ
+                </span>
+              )}
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900">
+              {isAdmin ? "All Bookings (รายการจองทั้งหมดในระบบ)" : "My Bookings (รายการจองของฉัน)"}
+            </h1>
+            <p className="text-xs text-slate-500">
+              {isAdmin
+                ? "ตรวจสอบ จัดการ และควบคุมประวัติการใช้งานห้องของบุคลากรและนักศึกษาทุกคน"
+                : `แสดงประวัติและรายการจองที่ผูกกับบัญชี ${userEmail}`}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="bg-orange-50 border border-orange-200 px-3.5 py-2 rounded-xl text-xs">
-              <span className="text-slate-600">โควตาคงเหลือวันนี้: </span>
-              <strong className="text-orange-600 font-bold">
-                {remainingQuota} ชั่วโมง (ใช้ไป {usedHours} ชม.)
-              </strong>
-            </div>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" /> กลับหน้าหลัก
+          </Link>
+        </div>
 
-            <Link
-              href="/"
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              หน้าหลัก
-            </Link>
+        {/* Filters */}
+        <div className="flex items-center justify-between flex-wrap gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+            <Filter className="w-4 h-4 text-orange-600" /> กรองตามสถานะ:
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {[
+              { id: "all", label: "ทั้งหมด" },
+              { id: "pending", label: "รอเช็คอิน" },
+              { id: "checked_in", label: "กำลังใช้งาน" },
+              { id: "completed", label: "คืนห้องแล้ว" },
+              { id: "cancelled", label: "ยกเลิกแล้ว" },
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setStatusFilter(f.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  statusFilter === f.id
+                    ? "bg-[#EA580C] text-white shadow-xs"
+                    : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/70"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Loading State */}
-        {isLoading && (
-          <div className="text-center py-12 text-slate-400 text-sm">
-            กำลังโหลดข้อมูลการจอง...
+        {/* รายการจอง */}
+        {isLoading ? (
+          <div className="bg-white rounded-3xl p-12 text-center text-xs font-bold text-slate-400 border border-slate-200/80">
+            กำลังโหลดข้อมูลรายการจอง...
           </div>
-        )}
-
-        {!isLoading && (
-          <>
-            {/* รายการที่กำลังดำเนินการ */}
-            <div className="space-y-3">
-              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                รายการที่กำลังดำเนินการ ({activeBookings.length})
-              </h2>
-
-              {activeBookings.length === 0 ? (
-                <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-slate-400 text-sm shadow-sm">
-                  ไม่มีรายการจองที่กำลังดำเนินการ
-                </div>
-              ) : (
-                <div className="grid gap-3">
-                  {activeBookings.map((b) => (
-                    <div
-                      key={b.id}
-                      className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-slate-300 transition-all"
-                    >
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900 text-base">
-                            {b.room.toUpperCase()}
-                          </span>
-                          <span
-                            className={`text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${
-                              b.status === "checked_in"
-                                ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
-                                : "bg-amber-50 text-amber-600 border border-amber-200"
-                            }`}
-                          >
-                            {b.status === "checked_in"
-                              ? "เช็คอินแล้ว"
-                              : "รอยืนยันสิทธิ์หน้าห้อง"}
-                          </span>
-                        </div>
-
-                        <p className="text-sm font-medium text-slate-700">{b.title}</p>
-
-                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 pt-1">
-                          <span className="inline-flex items-center gap-1">
-                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                            {b.date}
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5 text-slate-400" />
-                            {formatTimeRange(b.startTime, b.endTime)} ({b.durationHours} ชม.)
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <Users className="w-3.5 h-3.5 text-slate-400" />
-                            {b.people} คน
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 w-full md:w-auto">
-                        {b.status !== "checked_in" && (
-                          <Link
-                            href="/check-in"
-                            className="flex-1 md:flex-none inline-flex items-center justify-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shadow-sm"
-                          >
-                            <QrCode className="w-4 h-4" />
-                            เช็คอิน
-                          </Link>
-                        )}
-                        <button
-                          onClick={() => handleCancelBooking(b.id)}
-                          disabled={cancellingId === b.id}
-                          className="flex-1 md:flex-none inline-flex items-center justify-center gap-1 px-3 py-2 bg-slate-50 hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 rounded-xl text-xs font-medium transition-colors"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          {cancellingId === b.id ? "กำลังยกเลิก..." : "ยกเลิก"}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+        ) : filteredBookings.length === 0 ? (
+          <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/80 space-y-3">
+            <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+              <Calendar className="w-6 h-6" />
             </div>
+            <p className="text-sm font-bold text-slate-700">ไม่พบรายการจองตามเงื่อนไขที่เลือก</p>
+            <p className="text-xs text-slate-400">
+              {isAdmin
+                ? "ยังไม่มีการจองในสถานะนี้ในระบบ"
+                : "คุณยังไม่มีประวัติการจองห้องในสถานะนี้"}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredBookings.map((b) => (
+              <div
+                key={b.id}
+                className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs hover:border-orange-300 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+              >
+                <div className="space-y-2 flex-1">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <span className="text-xl font-black text-slate-900">{b.room_id}</span>
+                    {renderStatusBadge(b.status)}
+                    <span className="text-[11px] font-mono text-slate-400">
+                      #{b.id.slice(0, 8).toUpperCase()}
+                    </span>
+                  </div>
 
-            {/* ประวัติที่ผ่านมา */}
-            <div className="space-y-3 pt-4">
-              <h2 className="text-base font-bold text-slate-800">
-                ประวัติที่ผ่านมา ({pastBookings.length})
-              </h2>
+                  <p className="text-sm font-bold text-slate-800">{b.title}</p>
 
-              {pastBookings.length === 0 ? (
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center text-slate-400 text-xs shadow-sm">
-                  ไม่มีประวัติการจองที่ผ่านมา
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-slate-500 pt-1">
+                    <span className="flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-orange-500 shrink-0" /> วันที่: {b.date}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                      {formatDisplayTime(b.start_time)} – {formatDisplayTime(b.end_time)} (
+                      {b.duration_hours} ชม.)
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-orange-500 shrink-0" /> {b.people} คน
+                    </span>
+                  </div>
+
+                  {/* แสดงชื่อและอีเมลของผู้จอง (มีประโยชน์สำหรับ Admin มาก) */}
+                  <div className="flex items-center gap-4 text-[11px] text-slate-400 pt-1 border-t border-slate-100">
+                    <span className="flex items-center gap-1 text-slate-600 font-medium">
+                      <User className="w-3 h-3 text-slate-400" /> {b.booked_by || "ผู้ใช้งาน"}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Mail className="w-3 h-3 text-slate-400" /> {b.email}
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                <div className="grid gap-2.5">
-                  {pastBookings.map((b) => (
-                    <div
-                      key={b.id}
-                      className="bg-white/70 border border-slate-200 rounded-xl p-3.5 flex justify-between items-center text-xs opacity-75"
+
+                {/* ปุ่มจัดการ */}
+                <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 border-t sm:border-t-0 pt-3 sm:pt-0">
+                  {/* ปุ่มยกเลิกการจอง: User กดได้เฉพาะของตัวเองที่ยังไม่จบ ส่วน Admin ยกเลิกได้ทุกรายการที่ยังค้างอยู่ */}
+                  {(b.status === "pending" || (isAdmin && b.status === "checked_in")) && (
+                    <button
+                      onClick={() => handleCancelBooking(b)}
+                      disabled={actionLoadingId === b.id}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-bold transition-all disabled:opacity-50"
                     >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-slate-800">
-                            {b.room.toUpperCase()}
-                          </span>
-                          <span className="text-slate-600">- {b.title}</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">
-                            {b.status === "cancelled"
-                              ? "ยกเลิกแล้ว"
-                              : b.status === "expired"
-                              ? "หมดเวลาเช็คอิน"
-                              : "เสร็จสิ้น"}
-                          </span>
-                        </div>
-                        <div className="text-slate-400 mt-1">
-                          {b.date} • {formatTimeRange(b.startTime, b.endTime)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                      <Trash2 className="w-4 h-4" />
+                      {actionLoadingId === b.id
+                        ? "กำลังยกเลิก..."
+                        : isAdmin
+                        ? "ยกเลิกสิทธิ์ (Admin)"
+                        : "ยกเลิกการจอง"}
+                    </button>
+                  )}
                 </div>
-              )}
-            </div>
-          </>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

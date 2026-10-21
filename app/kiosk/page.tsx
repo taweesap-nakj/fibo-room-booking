@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
@@ -35,6 +36,36 @@ interface RoomItem {
 }
 
 export default function KioskPage() {
+  const router = useRouter();
+const [isAdminChecking, setIsAdminChecking] = useState(true);
+
+useEffect(() => {
+  const verifyAdmin = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
+      router.replace("/login");
+      return;
+    }
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", session.user.id)
+      .single();
+
+    const isUserAdmin =
+      session.user.email === "admin@fibo.kmutt.ac.th" ||
+      profile?.role === "admin" ||
+      session.user.user_metadata?.role === "admin";
+
+    if (!isUserAdmin) {
+      alert("หน้าจอ Kiosk สงวนสิทธิ์เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น");
+      router.replace("/");
+      return;
+    }
+    setIsAdminChecking(false);
+  };
+  verifyAdmin();
+}, [router]);
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<string>("FB202");
   const [bookings, setBookings] = useState<BookingItem[]>([]);

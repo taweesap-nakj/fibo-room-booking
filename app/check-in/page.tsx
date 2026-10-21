@@ -1,405 +1,337 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
+  QrCode,
+  Camera,
   CheckCircle2,
   Clock,
-  QrCode,
-  MapPin,
-  AlertTriangle,
-  Camera,
-  X,
   ArrowLeft,
-  Calendar,
   Users,
+  XCircle,
+  AlertCircle,
+  ShieldCheck,
 } from "lucide-react";
-import { Html5QrcodeScanner } from "html5-qrcode";
 
-interface BookingItem {
+interface PendingBooking {
   id: string;
-  room: string;
-  floor: number;
+  room_id: string;
   title: string;
   date: string;
-  startTime: string;
-  endTime: string;
-  durationHours: number;
+  start_time: string;
+  end_time: string;
   people: number;
-  bookedBy: string;
   status: string;
-  checkedInAt: string | null;
-  expiresAt: string | null;
 }
 
-function CheckInContent() {
-  const searchParams = useSearchParams();
-  const urlBookingId = searchParams.get("booking_id");
-  const urlRoomId = searchParams.get("room");
+export default function CheckInPage() {
+  const router = useRouter();
+  const [bookings, setBookings] = useState<PendingBooking[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [scanningBooking, setScanningBooking] = useState<PendingBooking | null>(null);
+  const [scanError, setScanError] = useState<string>("");
+  const [manualPin, setManualPin] = useState<string>("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [successRoom, setSuccessRoom] = useState<string | null>(null);
 
-  const [bookings, setBookings] = useState<BookingItem[]>([]);
-  const [remainingSecs, setRemainingSecs] = useState<number>(900);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
-  const [activeScanBookingId, setActiveScanBookingId] = useState<string | null>(null);
-  const [isCheckingIn, setIsCheckingIn] = useState<boolean>(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
-
-  // ดึงข้อมูลการจองจาก Supabase
-  const fetchData = async () => {
+  const fetchUserPendingBookings = async () => {
     try {
-      const { data: bookingsData, error } = await supabase
-        .from("bookings")
-        .select("*")
-        .order("start_time", { ascending: false });
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      if (error) {
-        console.error("Fetch bookings error:", error);
+      if (!session?.user?.email) {
+        router.replace("/login");
         return;
       }
 
-      if (bookingsData) {
-        setBookings(
-          bookingsData.map((b: any) => {
-            const start = new Date(b.start_time);
-            const end = new Date(b.end_time);
-            const duration = Math.max(
-              0,
-              (end.getTime() - start.getTime()) / (1000 * 60 * 60)
-            );
+      const { data, error } = await supabase
+        .from("bookings")
+        .select("*")
+        .eq("email", session.user.email)
+        .eq("status", "pending")
+        .order("start_time", { ascending: true });
 
-            return {
-              id: b.id,
-              room: b.room_id || "-",
-              floor: Number(String(b.room_id).replace(/\D/g, "")[0]) || 3,
-              title: b.title || "การประชุม",
-              date: b.start_time ? b.start_time.split("T")[0] : "",
-              startTime: b.start_time,
-              endTime: b.end_time,
-              durationHours: duration,
-              people: b.attendees || 1,
-              bookedBy: "ฉัน",
-              status: b.status || "pending_checkin",
-              checkedInAt: b.checked_in_at,
-              expiresAt: b.check_in_deadline || null,
-            };
-          })
-        );
+      if (!error && data) {
+        setBookings(data);
       }
     } catch (err) {
-      console.error("Error fetching data:", err);
+      console.error("Error loading check-in bookings:", err);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
-
-    // ฟัง Realtime updates เมื่อสถานะการจองเปลี่ยน
-    const channel = supabase
-      .channel("checkin-realtime-sub")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "bookings" },
-        () => fetchData()
-      )
-      .subscribe();
-
-    // Timer นับถอยหลัง 15 นาที
-    const timer = setInterval(() => {
-      setRemainingSecs((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-
-    return () => {
-      supabase.removeChannel(channel);
-      clearInterval(timer);
-    };
+    fetchUserPendingBookings();
+    return () => stopCamera();
   }, []);
 
-  // ฟังก์ชันยืนยันการเช็คอิน
-  const handleCheckIn = async (bookingId: string, roomCode: string) => {
-    try {
-      setIsCheckingIn(true);
-      const nowIso = new Date().toISOString();
+  const startCamera = async (booking: PendingBooking) => {
+    setScanningBooking(booking);
+    setScanError("");
+    setManualPin("");
 
-      // 1. อัปเดตสถานะในตาราง bookings
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      setScanError("ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการเข้าถึงกล้อง หรือกรอกรหัส PIN หน้าห้องแทน");
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setScanningBooking(null);
+  };
+
+  const handleConfirmCheckIn = async (booking: PendingBooking) => {
+    setIsProcessing(true);
+    setScanError("");
+
+    try {
+      // 1. อัปเดตสถานะการจองเป็น checked_in
       const { error: bookingErr } = await supabase
         .from("bookings")
         .update({
           status: "checked_in",
-          checked_in_at: nowIso,
+          checked_in_at: new Date().toISOString(),
         })
-        .eq("id", bookingId);
+        .eq("id", booking.id);
 
       if (bookingErr) throw bookingErr;
 
-      // 2. อัปเดตสถานะห้องในตาราง rooms
-      await supabase
+      // 2. อัปเดตสถานะห้องในตาราง rooms เป็น in_use
+      const { error: roomErr } = await supabase
         .from("rooms")
-        .update({ status: "in_use" })
-        .eq("id", roomCode.toLowerCase());
+        .update({
+          status: "in_use",
+          next_available: "Occupied",
+        })
+        .eq("id", booking.room_id);
 
-      alert(`เช็คอินสำเร็จ! เข้าใช้งานห้อง ${roomCode.toUpperCase()} ได้เลยครับ`);
-      stopScanner();
-      await fetchData();
+      if (roomErr) throw roomErr;
+
+      stopCamera();
+      setSuccessRoom(booking.room_id);
+      fetchUserPendingBookings();
     } catch (err: any) {
-      console.error("Check-in error:", err);
-      alert("เกิดข้อผิดพลาดในการเช็คอิน: " + (err.message || err));
+      setScanError(err.message || "เกิดข้อผิดพลาดในการเช็คอิน");
     } finally {
-      setIsCheckingIn(false);
+      setIsProcessing(false);
     }
   };
 
-  // จัดการกล้องสแกน QR Code
-  const startScanner = (bookingId: string) => {
-    setActiveScanBookingId(bookingId);
-    setIsCameraActive(true);
+  const handleVerifyPinOrQr = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scanningBooking) return;
 
-    setTimeout(() => {
-      const scanner = new Html5QrcodeScanner(
-        "reader",
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        false
-      );
+    const expectedPin = scanningBooking.room_id.replace(/\D/g, "");
+    const cleanInput = manualPin.trim().toUpperCase();
 
-      scanner.render(
-        (decodedText) => {
-          const target = bookings.find((b) => b.id === bookingId);
-          if (
-            target &&
-            (decodedText.toLowerCase().includes(target.room.toLowerCase()) ||
-              decodedText.toLowerCase().includes("fibo"))
-          ) {
-            scanner.clear();
-            handleCheckIn(bookingId, target.room);
-          } else {
-            alert(`QR Code ไม่ถูกต้องหรือไม่ตรงกับห้อง ${target?.room}`);
-          }
-        },
-        () => {}
-      );
-
-      scannerRef.current = scanner;
-    }, 150);
-  };
-
-  const stopScanner = () => {
-    if (scannerRef.current) {
-      try {
-        scannerRef.current.clear();
-      } catch (e) {}
-      scannerRef.current = null;
+    // รองรับทั้งรหัส PIN ห้อง (เช่น 201, 302) หรือข้อความจาก QR Code (FIBO-ROOM-FB201-...)
+    if (
+      cleanInput === expectedPin ||
+      cleanInput === scanningBooking.room_id.toUpperCase() ||
+      cleanInput.includes(`FIBO-ROOM-${scanningBooking.room_id.toUpperCase()}`)
+    ) {
+      handleConfirmCheckIn(scanningBooking);
+    } else {
+      setScanError("รหัสยืนยันไม่ตรงกับห้องที่จอง กรุณาตรวจสอบหน้าจอ Kiosk หน้าห้องอีกครั้ง");
     }
-    setIsCameraActive(false);
-    setActiveScanBookingId(null);
   };
 
-  // กรองรายการที่ต้องเช็คอิน (รับทั้ง pending และ pending_checkin)
-  const pendingBookings = bookings.filter(
-    (b) => b.status === "pending" || b.status === "pending_checkin"
-  );
-
-  const formatTimer = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  const formatTime = (isoOrTime: string) => {
+    if (!isoOrTime) return "--:--";
+    if (isoOrTime.includes("T")) {
+      return new Date(isoOrTime).toLocaleTimeString("th-TH", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+    }
+    return isoOrTime;
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
-      {/* ส่วนหัว */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <span className="text-xs font-bold tracking-wider text-orange-600 uppercase">
-            FIBO Physical Verification
-          </span>
-          <h1 className="text-2xl font-black text-slate-800">Physical Check-In</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            เมื่อเดินทางมาถึงห้องประชุม ให้สแกน Dynamic QR Code บนหน้าจอหน้าห้องเพื่อเริ่มใช้งาน
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="inline-flex items-center gap-2 bg-red-50 text-red-600 border border-red-200 px-3.5 py-2 rounded-xl text-xs font-semibold">
-            <Clock className="w-4 h-4 animate-pulse text-red-500" />
-            นับถอยหลังตัดสิทธิ์: {formatTimer(remainingSecs)} นาที
+    <div className="min-h-screen bg-slate-100 p-4 sm:p-8 font-sans">
+      <div className="max-w-3xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs">
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-orange-600">
+              SMART VERIFICATION
+            </span>
+            <h1 className="text-2xl font-black text-slate-900">เช็คอินเข้าใช้งานห้อง (Check-In)</h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              สแกน QR Code จากแท็บเล็ตหน้าห้องเพื่อยืนยันการเข้าใช้งานจริง
+            </p>
           </div>
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all"
           >
-            <ArrowLeft className="w-4 h-4" />
-            หน้าหลัก
+            <ArrowLeft className="w-4 h-4" /> กลับหน้าหลัก
           </Link>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* คอลัมน์รายการห้องที่ต้องเช็คอิน (ซ้าย) */}
-        <div className="lg:col-span-2 space-y-4">
-          <h2 className="text-sm font-bold text-slate-800 flex items-center justify-between">
-            <span>รายการห้องที่ต้องไปยืนยันสิทธิ์หน้าห้อง</span>
-            <span className="text-xs font-normal text-slate-500">
-              พบ {pendingBookings.length} รายการ
-            </span>
+        {/* แจ้งเตือนเมื่อเช็คอินสำเร็จ */}
+        {successRoom && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-3xl p-6 text-emerald-900 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-black text-base">เช็คอินห้อง {successRoom} สำเร็จ!</h3>
+                <p className="text-xs text-emerald-700 mt-0.5">
+                  ระบบได้เปลี่ยนสถานะห้องเป็น "กำลังใช้งาน (In Use)" เรียบร้อยแล้ว
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors"
+            >
+              ไปหน้าหลัก
+            </Link>
+          </div>
+        )}
+
+        {/* รายการที่รอเช็คอิน */}
+        <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+          <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+            รายการจองที่รอเช็คอินของคุณ ({bookings.length})
           </h2>
 
           {isLoading ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-sm text-slate-400">
-              กำลังโหลดข้อมูลการจอง...
-            </div>
-          ) : pendingBookings.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3">
-              <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-400">
-                <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+            <p className="text-xs text-slate-400 py-8 text-center">กำลังโหลดรายการจอง...</p>
+          ) : bookings.length === 0 ? (
+            <div className="text-center py-12 space-y-3">
+              <div className="w-14 h-14 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                <QrCode className="w-7 h-7" />
               </div>
-              <p className="text-sm font-semibold text-slate-700">
-                ไม่มีรายการจองที่ต้องยืนยันตัวตนในขณะนี้
-              </p>
+              <p className="text-sm font-bold text-slate-600">ไม่มีรายการที่รอเช็คอินในขณะนี้</p>
               <p className="text-xs text-slate-400">
-                รายการจองได้รับการเช็คอินครบถ้วนแล้ว หรือยังไม่มีการจองใหม่
+                หากคุณยังไม่ได้จองห้อง สามารถกลับไปเลือกจองห้องว่างได้ที่หน้าแรก
               </p>
-              <Link
-                href="/search"
-                className="inline-block mt-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
-              >
-                ไปหน้าเลือกจองห้อง
-              </Link>
             </div>
           ) : (
-            pendingBookings.map((b) => (
-              <div
-                key={b.id}
-                className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4 hover:border-orange-300 transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-base text-slate-800 uppercase">
-                      {b.room}
-                    </span>
-                    <span className="bg-amber-50 text-amber-600 border border-amber-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                      รอยืนยันสิทธิ์หน้าห้อง
-                    </span>
+            <div className="space-y-3">
+              {bookings.map((b) => (
+                <div
+                  key={b.id}
+                  className="p-5 rounded-2xl border border-orange-200/80 bg-gradient-to-r from-orange-50/40 to-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl font-black text-slate-900">{b.room_id}</span>
+                      <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2.5 py-0.5 rounded-full">
+                        รอสแกนเข้าห้อง
+                      </span>
+                    </div>
+                    <p className="text-xs font-bold text-slate-700">{b.title}</p>
+                    <div className="flex items-center gap-3 text-xs text-slate-500 pt-1">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-orange-500" />
+                        {formatTime(b.start_time)} – {formatTime(b.end_time)}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Users className="w-3.5 h-3.5 text-orange-500" />
+                        {b.people || 1} คน
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-xs text-slate-400">รหัสจอง: #{b.id.slice(0, 8)}</span>
-                </div>
 
-                <div className="text-sm font-semibold text-slate-700">{b.title}</div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-slate-500 pt-2 border-t border-slate-100">
-                  <div className="flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{b.date}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" />
-                    <span>
-                      {new Date(b.startTime).toLocaleTimeString("th-TH", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}{" "}
-                      -{" "}
-                      {new Date(b.endTime).toLocaleTimeString("th-TH", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{b.people} คน</span>
-                  </div>
-                </div>
-
-                {/* ปุ่มปฏิบัติการ */}
-                <div className="flex items-center gap-2 pt-2">
+                  {/* เหลือเฉพาะปุ่มสแกน QR ของจริงเท่านั้น ไม่มีปุ่มจำลอง */}
                   <button
-                    onClick={() => startScanner(b.id)}
-                    className="flex-1 inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white py-2.5 px-4 rounded-xl text-xs font-bold transition-all shadow-sm"
+                    onClick={() => startCamera(b)}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#EA580C] hover:bg-orange-700 text-white font-bold text-xs px-5 py-3 rounded-xl shadow-md shadow-orange-600/20 transition-all"
                   >
-                    <Camera className="w-4 h-4" />
-                    เปิดกล้องสแกน QR Code หน้าห้อง
-                  </button>
-
-                  <button
-                    disabled={isCheckingIn}
-                    onClick={() => handleCheckIn(b.id, b.room)}
-                    className="inline-flex items-center justify-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 py-2.5 px-4 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
-                  >
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    ยืนยันทันที (จำลอง)
+                    <Camera className="w-4 h-4" /> สแกน QR หน้าห้อง
                   </button>
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
-        </div>
-
-        {/* ข้อมูลความปลอดภัยและกติกา (ขวา) */}
-        <div className="space-y-4">
-          <div className="bg-amber-50/60 border border-amber-200/80 rounded-2xl p-5 space-y-3">
-            <div className="flex items-center gap-2 text-amber-800 font-bold text-sm">
-              <AlertTriangle className="w-4 h-4 text-amber-600" />
-              <span>ระบบป้องกัน Ghost Booking</span>
-            </div>
-            <p className="text-xs text-amber-700 leading-relaxed">
-              เพื่อป้องกันการจองทิ้งไว้แต่ไม่มาใช้งานจริง ระบบจะบังคับให้ผู้จองต้องเดินทางมาถึงหน้าห้องและสแกน QR Code ภายใน 15 นาที
-            </p>
-            <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-[11px] text-red-600 font-medium">
-              ⚠️ หากไม่สแกนภายใน 15 นาที สิทธิ์การจองจะถูกยกเลิกอัตโนมัติ และระบบจะคืนห้องว่างให้ผู้อื่นทันที
-            </div>
-          </div>
         </div>
       </div>
 
-      {/* Modal สแกนกล้อง QR Code */}
-      {isCameraActive && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl relative">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 font-bold text-slate-800 text-sm">
-                <QrCode className="w-4 h-4 text-orange-500" />
-                สแกน Dynamic QR Code หน้าห้อง
+      {/* Modal กล้องสแกน QR Code */}
+      {scanningBooking && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  สแกน QR Code ห้อง {scanningBooking.room_id}
+                </h3>
+                <p className="text-xs text-slate-500">หันกล้องไปที่จอ Kiosk หน้าห้องเพื่อเช็คอิน</p>
               </div>
               <button
-                onClick={stopScanner}
-                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600"
+                onClick={stopCamera}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-full"
               >
-                <X className="w-4 h-4" />
+                <XCircle className="w-5 h-5" />
               </button>
             </div>
 
-            <div
-              id="reader"
-              className="overflow-hidden rounded-2xl border border-slate-200 bg-black"
-            ></div>
+            <div className="relative bg-slate-950 rounded-2xl overflow-hidden aspect-square flex items-center justify-center">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-8 border-2 border-orange-500/80 rounded-2xl pointer-events-none"></div>
+            </div>
 
-            <p className="text-[11px] text-center text-slate-400">
-              หันกล้องไปที่หน้าจอ Smart Tablet ประจำหน้าห้องเพื่อทำการยืนยัน
-            </p>
+            {scanError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{scanError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleVerifyPinOrQr} className="space-y-2 pt-2 border-t border-slate-100">
+              <label className="block text-xs font-bold text-slate-700">
+                หรือกรอกรหัส PIN ที่ปรากฏบนจอหน้าห้อง:
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={manualPin}
+                  onChange={(e) => setManualPin(e.target.value)}
+                  placeholder="กรอกรหัสห้องเพื่อยืนยัน..."
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-900 outline-none focus:border-orange-500"
+                />
+                <button
+                  type="submit"
+                  disabled={isProcessing || !manualPin.trim()}
+                  className="bg-slate-900 hover:bg-orange-600 disabled:bg-slate-300 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5"
+                >
+                  <ShieldCheck className="w-4 h-4" /> ยืนยัน
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
     </div>
-  );
-}
-
-export default function CheckInPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 text-slate-500 text-sm font-medium">
-          กำลังเตรียมข้อมูลระบบเช็คอิน...
-        </div>
-      }
-    >
-      <CheckInContent />
-    </Suspense>
   );
 }

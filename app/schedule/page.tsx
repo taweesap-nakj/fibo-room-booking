@@ -1,5 +1,6 @@
 "use client";
 
+import { autoReleaseExpiredBookings } from "@/lib/booking";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
@@ -40,6 +41,7 @@ export default function SchedulePage() {
 
   const fetchScheduleData = async () => {
     try {
+      await autoReleaseExpiredBookings();
       // 1. ดึงข้อมูลห้อง
       const { data: roomsData } = await supabase
         .from("rooms")
@@ -68,6 +70,7 @@ export default function SchedulePage() {
       const { data: bookingsData, error } = await supabase
         .from("bookings")
         .select("*")
+        .in("status", ["pending", "checked_in"])
         .order("start_time", { ascending: true });
 
       if (error) {

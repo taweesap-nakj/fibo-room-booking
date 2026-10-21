@@ -155,12 +155,7 @@ export default function BookingConfirmedPage() {
             >
               <ArrowLeft className="w-4 h-4" /> กลับหน้าหลัก
             </Link>
-            <Link
-              href="/kiosk"
-              className="flex-1 py-3 px-4 rounded-xl border border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-xs text-center transition-colors flex items-center justify-center gap-2"
-            >
-              <Monitor className="w-4 h-4 text-orange-600" /> ดูจอหน้าห้อง (Kiosk)
-            </Link>
+            
             <Link
               href="/check-in"
               className="flex-1 py-3 px-4 rounded-xl bg-[#EA580C] hover:bg-orange-700 text-white font-bold text-xs text-center shadow-md shadow-orange-600/20 transition-all flex items-center justify-center gap-2"

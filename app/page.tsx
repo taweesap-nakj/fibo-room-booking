@@ -1,18 +1,31 @@
 "use client";
 
-import UserNav from "@/components/UserNav";
-import { createBooking } from "@/lib/booking";
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabase";
-import { Room, Booking } from "./data";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ROOMS_DATA as INITIAL_ROOMS, Room } from "./data";
+import { createBooking } from "@/lib/booking";
+import { supabase } from "@/lib/supabase";
 import {
-  Search, Bell, Layers, Clock, Zap, X, Users,
-  LogOut, Sparkles, CalendarRange, AlertCircle, KeyRound, Monitor
+  Building2,
+  Search,
+  Calendar,
+  BookOpen,
+  KeyRound,
+  Bell,
+  Users,
+  Zap,
+  Layers,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  X,
+  Plus,
+  LogOut,
+  Monitor,
+  ShieldAlert,
 } from "lucide-react";
-
-// สร้างตัวเลือกเวลาแบบ 24 ชั่วโมง ทุกๆ 5 นาที (00:00 - 23:55 น.) รวม 288 ช่วงเวลา
+// ตัวเลือกเวลาแบบ 24 ชั่วโมง ทุกๆ 5 นาที (00:00 - 23:55 น.)
 const TIME_OPTIONS = Array.from({ length: 288 }, (_, i) => {
   const totalMinutes = i * 5;
   const h = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
@@ -20,46 +33,50 @@ const TIME_OPTIONS = Array.from({ length: 288 }, (_, i) => {
   return `${h}:${m}`;
 });
 
-function getNextHourString(): string {
-  const d = new Date();
-  d.setHours(d.getHours() + 1, 0, 0, 0);
-  const hh = String(d.getHours()).padStart(2, "0");
-  return `${hh}:00`;
-}
+const getLocalDateStr = (d = new Date()) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
 
-function getNextTwoHoursString(): string {
-  const d = new Date();
-  d.setHours(d.getHours() + 2, 0, 0, 0);
-  const hh = String(d.getHours()).padStart(2, "0");
-  return `${hh}:00`;
-}
-
-export default function HomePage() {
+export default function Home() {
   const router = useRouter();
+  const [rooms, setRooms] = useState<Room[]>(INITIAL_ROOMS);
+  const [allBookings, setAllBookings] = useState<any[]>([]);
+  const [myBookings, setMyBookings] = useState<any[]>([]);
+  const [selectedFloor, setSelectedFloor] = useState<string>("All");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [currentTime, setCurrentTime] = useState<string>("");
 
-  const [isAuthChecking, setIsAuthChecking] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  // ข้อมูลผู้ใช้และสิทธิ์ Admin
+  const [userEmail, setUserEmail] = useState<string>("");
+  const [userName, setUserName] = useState<string>("");
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
 
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [currentTime, setCurrentTime] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [bookingDate, setBookingDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
-  );
-
-  const [floorFilter, setFloorFilter] = useState<number | "all">("all");
-  const [searchQuery, setSearchQuery] = useState("");
-
-  // Modal State
+  // Modal จองห้อง
   const [modalRoom, setModalRoom] = useState<Room | null>(null);
-  const [formTitle, setFormTitle] = useState("");
-  const [formStart, setFormStart] = useState("09:00");
-  const [formEnd, setFormEnd] = useState("10:00");
-  const [formPeople, setFormPeople] = useState(4);
-  const [formName, setFormName] = useState("");
+  const [formTitle, setFormTitle] = useState<string>("");
+  const [formDate, setFormDate] = useState<string>(getLocalDateStr());
+  const [formStart, setFormStart] = useState<string>("09:00");
+  const [formEnd, setFormEnd] = useState<string>("10:00");
+  const [formPeople, setFormPeople] = useState<number>(4);
+  const [formName, setFormName] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [timeOutAlertBooking, setTimeOutAlertBooking] = useState<any | null>(null);
+  // Modal สร้างห้องใหม่ (เฉพาะ Admin)
+  const [showAddRoomModal, setShowAddRoomModal] = useState<boolean>(false);
+  const [newRoomId, setNewRoomId] = useState<string>("");
+  const [newRoomFloor, setNewRoomFloor] = useState<number>(2);
+  const [newRoomCapacity, setNewRoomCapacity] = useState<number>(20);
+  const [newRoomType, setNewRoomType] = useState<string>("Lecture Room");
+  const [isCreatingRoom, setIsCreatingRoom] = useState<boolean>(false);
 
-  const checkAuthAndFetchData = async () => {
+  const todayStr = getLocalDateStr();
+  const tomorrowStr = getLocalDateStr(new Date(Date.now() + 86400000));
+
+  const fetchSystemData = async () => {
     try {
       const {
         data: { session },
@@ -70,742 +87,940 @@ export default function HomePage() {
         return;
       }
 
-      setIsAuthChecking(false);
+      const email = session.user.email || "";
+      const fullName =
+        session.user.user_metadata?.full_name ||
+        email.split("@")[0] ||
+        "ผู้ใช้งาน";
 
-      if (session.user.email === "admin@fibo.kmutt.ac.th") {
-        setIsAdmin(true);
-      } else {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", session.user.id)
-          .single();
+      setUserEmail(email);
+      setUserName(fullName);
 
-        if (profile?.role === "admin" || session.user.user_metadata?.role === "admin") {
-          setIsAdmin(true);
-        } else {
-          setIsAdmin(false);
-        }
-      }
+      // ตรวจสอบสิทธิ์ Admin
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", session.user.id)
+        .single();
 
+      const adminCheck =
+        email === "admin@fibo.kmutt.ac.th" ||
+        profile?.role === "admin" ||
+        session.user.user_metadata?.role === "admin";
+      setIsAdmin(adminCheck);
+
+      // 1. ดึงข้อมูลห้องทั้งหมด (ตัดห้อง SB- ที่ซ้ำออก)
       const { data: roomsData } = await supabase
         .from("rooms")
         .select("*")
-        .order("id");
+        .order("id", { ascending: true });
 
-      const { data: bookingsData } = await supabase
+      if (roomsData && roomsData.length > 0) {
+        const cleanRooms = roomsData
+          .filter((r: any) => !String(r.id).startsWith("SB-"))
+          .map((r: any) => ({
+            id: r.id,
+            floor: Number(r.floor) || 2,
+            capacity: Number(r.capacity) || 10,
+            type: r.type || "Meeting Room",
+            status: r.status || "available",
+            nextAvailable: r.next_available || "Now",
+          }));
+        setRooms(cleanRooms);
+      }
+
+      // 2. ดึงการจองทั้งหมดในระบบ (เพื่อคำนวณสถานะห้อง Real-time และเช็คเวลาชนกัน)
+      const { data: allBookingsData } = await supabase
         .from("bookings")
         .select("*")
-        .eq("email", session.user.email)
-        .order("created_at", { ascending: false });
+        .neq("status", "cancelled")
+        .order("start_time", { ascending: true });
 
-      if (roomsData) {
-        setRooms(
-          roomsData.map((r: any) => ({
-            id: r.id,
-            floor: r.floor,
-            capacity: r.capacity,
-            type: r.type,
-            status: r.status,
-            nextAvailable: r.next_available,
-            description: r.description,
-            amenities: r.amenities || [],
-          }))
+      if (allBookingsData) {
+        setAllBookings(allBookingsData);
+        setMyBookings(allBookingsData.filter((b: any) => b.email === email));
+        // ตรวจสอบว่ามีห้องของตนเองที่หมดเวลาใช้งานแล้วหรือไม่
+        const myCompleted = allBookingsData.filter(
+          (b: any) => b.email === email && b.status === "completed"
         );
-      }
 
-      if (bookingsData) {
-        setBookings(
-          bookingsData.map((b: any) => ({
-            id: b.id,
-            room: b.room_id,
-            floor: 0,
-            title: b.title,
-            date: b.date,
-            startTime: b.start_time,
-            endTime: b.end_time,
-            durationHours: Number(b.duration_hours),
-            people: b.people,
-            bookedBy: b.booked_by,
-            email: b.email,
-            amenities: [],
-            status: b.status,
-            checkedInAt: b.checked_in_at,
-            expiresAt: b.expires_at,
-          }))
-        );
+        for (const b of myCompleted) {
+          const notifiedKey = `notified_timeout_${b.id}`;
+          // ถ้ายังไม่เคยแจ้งเตือนการจองรอบนี้ ให้แสดงป๊อปอัปแจ้งเตือน
+          if (!localStorage.getItem(notifiedKey)) {
+            setTimeOutAlertBooking(b);
+            localStorage.setItem(notifiedKey, "true");
+            break;
+          }
+        }
       }
     } catch (err) {
-      console.error("Error fetching data:", err);
+      console.error("Fetch data error:", err);
     } finally {
-      setIsLoading(false);
+      setIsAuthChecking(false);
     }
   };
 
   useEffect(() => {
-    checkAuthAndFetchData();
+    fetchSystemData();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_OUT" || !session) {
-        router.replace("/login");
-      }
-    });
+    // นาฬิกา Real-time
+    const timer = setInterval(() => {
+      const now = new Date();
+      setCurrentTime(
+        now.toLocaleTimeString("th-TH", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+        })
+      );
+    }, 1000);
 
+    // Realtime Subscription เมื่อมีการจองหรือเปลี่ยนสถานะห้อง
     const channel = supabase
-      .channel("public-db-changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "rooms" },
-        () => checkAuthAndFetchData()
-      )
+      .channel("home-realtime")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "bookings" },
-        () => checkAuthAndFetchData()
+        () => fetchSystemData()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "rooms" },
+        () => fetchSystemData()
       )
       .subscribe();
 
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTime(
-        now.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
-      );
-    };
-    updateTime();
-    const timer = setInterval(updateTime, 1000);
-
     return () => {
-      authListener.subscription.unsubscribe();
-      supabase.removeChannel(channel);
       clearInterval(timer);
+      supabase.removeChannel(channel);
     };
-  }, [router]);
+  }, []);
 
-  const availableCount = rooms.filter((r) => r.status === "available").length;
-  const pendingCount = rooms.filter((r) => r.status === "pending").length;
-  const inUseCount = rooms.filter((r) => r.status === "in_use").length;
+  // คำนวณสถานะห้อง ณ เวลาปัจจุบันจริงๆ (Real-time Current Status)
+  const getRoomRealtimeStatus = (roomId: string): "available" | "pending" | "in_use" => {
+    const nowMs = Date.now();
 
-  const activeBookings = bookings.filter(
-    (b) => b.status === "pending" || b.status === "confirmed" || b.status === "checked_in"
-  );
+    // เช็คว่ามีรายการที่เช็คอินแล้วและยังไม่หมดเวลาหรือไม่
+    const checkedInBooking = allBookings.find((b) => {
+      if (b.room_id !== roomId || b.status !== "checked_in") return false;
+      const endMs = new Date(b.end_time).getTime();
+      return isNaN(endMs) ? true : endMs > nowMs;
+    });
+    if (checkedInBooking) return "in_use";
 
-  const usedHours = Number(
-    activeBookings.reduce((sum, b) => sum + b.durationHours, 0).toFixed(1)
-  );
-  const remainingQuota = Number(Math.max(0, 4 - usedHours).toFixed(1));
+    // เช็คว่ามีรายการที่รอเช็คอิน (ล่วงหน้าไม่เกิน 15 นาที หรืออยู่ในช่วงเวลาจอง)
+    const pendingBooking = allBookings.find((b) => {
+      if (b.room_id !== roomId || b.status !== "pending") return false;
+      const startMs = new Date(b.start_time).getTime();
+      const endMs = new Date(b.end_time).getTime();
+      if (isNaN(startMs) || isNaN(endMs)) return false;
+      return nowMs >= startMs - 15 * 60 * 1000 && nowMs < endMs;
+    });
+    if (pendingBooking) return "pending";
 
-  const calculateSelectedDuration = (start: string, end: string) => {
-    if (!start || !end) return 0;
-    const [startH, startM] = start.split(":").map(Number);
-    const [endH, endM] = end.split(":").map(Number);
-    const diffMinutes = (endH * 60 + endM) - (startH * 60 + startM);
-    return Number((diffMinutes / 60).toFixed(1));
+    return "available";
   };
 
-  const selectedDuration = calculateSelectedDuration(formStart, formEnd);
+  // นับจำนวนห้องแต่ละสถานะแบบ Real-time (แก้ข้อ 1)
+  const totalRoomsCount = rooms.length;
+  const inUseCount = rooms.filter((r) => getRoomRealtimeStatus(r.id) === "in_use").length;
+  const pendingCount = rooms.filter((r) => getRoomRealtimeStatus(r.id) === "pending").length;
+  const availableCount = totalRoomsCount - inUseCount - pendingCount;
 
-  const isPastTime = (() => {
-    if (!bookingDate || !formStart) return false;
-    const selectedDateTime = new Date(`${bookingDate}T${formStart}:00`);
-    const now = new Date();
-    return selectedDateTime < now;
-  })();
+  // คำนวณโควตาวันนี้ของผู้ใช้ (นับรวม completed เพื่อไม่ให้คืนโควตาเมื่อกดคืนห้อง - แก้ข้อ 6)
+  const usedHoursToday = myBookings
+    .filter((b) => b.date === todayStr && b.status !== "cancelled")
+    .reduce((sum, b) => sum + (Number(b.duration_hours) || 0), 0);
+  const remainingQuota = Math.max(0, Number((4 - usedHoursToday).toFixed(2)));
 
-  const isTimeInvalid = selectedDuration <= 0 || isPastTime;
-  const isOverSingleLimit = selectedDuration > 4;
-  const isOverDailyQuota = selectedDuration > remainingQuota;
-
-  const isTimeConflicting = activeBookings.some((b) => {
-    if (!modalRoom || b.room !== modalRoom.id) return false;
-    const [startH, startM] = formStart.split(":").map(Number);
-    const [endH, endM] = formEnd.split(":").map(Number);
-    const [bStartH, bStartM] = b.startTime.split(":").map(Number);
-    const [bEndH, bEndM] = b.endTime.split(":").map(Number);
-    const reqStart = startH * 60 + (startM || 0);
-    const reqEnd = endH * 60 + (endM || 0);
-    const existStart = bStartH * 60 + (bStartM || 0);
-    const existEnd = bEndH * 60 + (bEndM || 0);
-    return Math.max(reqStart, existStart) < Math.min(reqEnd, existEnd);
+  // ค้นหารายการจองที่ยัง Active อยู่ของผู้ใช้ (จำกัด 1 คน ต่อ 1 รายการที่ค้างอยู่)
+  const myActiveBookings = myBookings.filter((b) => {
+    if (b.status !== "pending" && b.status !== "checked_in") return false;
+    const endMs = new Date(b.end_time).getTime();
+    return isNaN(endMs) ? true : endMs > Date.now();
   });
 
-  const canSubmitBooking =
-    !isTimeInvalid && !isOverSingleLimit && !isOverDailyQuota && !isTimeConflicting;
-
-  const handleOpenModal = async (room: Room) => {
+  // เปิด Modal จองห้อง
+  const handleOpenModal = (room: Room) => {
     setModalRoom(room);
-    setFormTitle(""); // เคลียร์ให้ว่างเพื่อให้ผู้ใช้พิมพ์เอง
+    setFormTitle(""); // ให้ผู้ใช้พิมพ์หัวข้อเอง
+    setFormName(userName); // ดึงชื่อ User อัตโนมัติ
+    setFormDate(todayStr);
     setFormPeople(Math.min(4, room.capacity));
 
-    // กำหนดเวลาเริ่มต้นเป็นเวลาปัจจุบันปัดขึ้นเป็นหลัก 5 นาที
+    // ตั้งเวลาเริ่มต้นปัดขึ้นทุก 5 นาที
     const now = new Date();
-    const nextFive = Math.ceil(now.getMinutes() / 5) * 5;
+    const nextFive = Math.ceil((now.getMinutes() + 1) / 5) * 5;
     now.setMinutes(nextFive, 0, 0);
-    const startH = String(now.getHours()).padStart(2, "0");
-    const startM = String(now.getMinutes()).padStart(2, "0");
-    setFormStart(`${startH}:${startM}`);
+    const sh = String(now.getHours()).padStart(2, "0");
+    const sm = String(now.getMinutes()).padStart(2, "0");
+    setFormStart(`${sh}:${sm}`);
 
-    // สิ้นสุดหลังเริ่ม 15 นาที
-    const end = new Date(now.getTime() + 15 * 60000);
-    const endH = String(end.getHours()).padStart(2, "0");
-    const endM = String(end.getMinutes()).padStart(2, "0");
-    setFormEnd(`${endH}:${endM}`);
-
-    // ดึงชื่อของผู้ใช้ที่ล็อกอินอยู่จริงมาใส่
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      const uName = session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "ผู้ใช้งาน";
-      setFormName(uName);
-    }
+    const end = new Date(now.getTime() + 30 * 60000);
+    const eh = String(end.getHours()).padStart(2, "0");
+    const em = String(end.getMinutes()).padStart(2, "0");
+    setFormEnd(`${eh}:${em}`);
   };
 
-  const handleConfirmBooking = async (e?: React.MouseEvent) => {
-    if (e) e.preventDefault();
-    if (!modalRoom || !canSubmitBooking) return;
+  // ตรวจสอบว่าเวลาใน Dropdown ชนกับการจองที่มีอยู่แล้วของห้องนี้หรือไม่
+  const isTimeSlotTaken = (timeStr: string) => {
+    if (!modalRoom) return false;
+    const slotMs = new Date(`${formDate}T${timeStr}:00`).getTime();
+    return allBookings.some((b) => {
+      if (b.room_id !== modalRoom.id) return false;
+      if (b.status !== "pending" && b.status !== "checked_in") return false;
+      const startMs = new Date(b.start_time).getTime();
+      const endMs = new Date(b.end_time).getTime();
+      return slotMs >= startMs && slotMs < endMs;
+    });
+  };
 
-    setIsLoading(true);
+  // รายการจองของห้องที่เปิดอยู่ใน Modal เฉพาะวันที่เลือก
+  const modalRoomBookingsOnDate = modalRoom
+    ? allBookings.filter(
+        (b) =>
+          b.room_id === modalRoom.id &&
+          b.date === formDate &&
+          (b.status === "pending" || b.status === "checked_in")
+      )
+    : [];
+
+  // ยืนยันการจอง
+  const handleConfirmBooking = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!modalRoom) return;
+
+    if (!formTitle.trim()) {
+      alert("กรุณากรอกหัวข้อการใช้งานห้อง");
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      const startTime = new Date(`${bookingDate}T${formStart}:00`).toISOString();
-      const endTime = new Date(`${bookingDate}T${formEnd}:00`).toISOString();
+      const startIso = `${formDate}T${formStart}:00`;
+      const endIso = `${formDate}T${formEnd}:00`;
 
       await createBooking({
         roomId: modalRoom.id,
-        title: formTitle,
-        startTime,
-        endTime,
+        title: formTitle.trim(),
+        startTime: startIso,
+        endTime: endIso,
         attendees: formPeople,
       });
 
       setModalRoom(null);
       router.push("/booking-confirmed");
     } catch (err: any) {
-      alert(err.message || "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+      alert(err.message || "เกิดข้อผิดพลาดในการจอง");
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
-  const handleCompleteBooking = async (bookingId: string) => {
-    const target = bookings.find((b) => b.id === bookingId);
-    if (!target) return;
+  // กดคืนห้อง (Check Out) - เปลี่ยนสถานะเป็น completed โดยไม่คืนโควตาชั่วโมง
+  const handleCheckOut = async (booking: any) => {
+    if (!confirm(`ยืนยันการคืนห้อง ${booking.room_id} ใช่หรือไม่? (โควตาชั่วโมงที่ใช้ไปจะไม่ถูกคืน)`))
+      return;
 
     try {
       await supabase
         .from("bookings")
         .update({ status: "completed" })
-        .eq("id", bookingId);
+        .eq("id", booking.id);
 
       await supabase
         .from("rooms")
         .update({ status: "available", next_available: "Now" })
-        .eq("id", target.room);
-    } catch (err: any) {
-      alert("เกิดข้อผิดพลาด: " + err.message);
+        .eq("id", booking.room_id);
+
+      fetchSystemData();
+    } catch (err) {
+      console.error("Check-out error:", err);
     }
   };
 
-  // ฟังก์ชันคำนวณสถานะห้องตามการจองจริง
-  const getRoomRealtimeStatus = (roomId: string, defaultStatus: Room["status"]) => {
-    const active = bookings.find(
-      (b) => b.room === roomId && (b.status === "checked_in" || b.status === "pending")
-    );
-    if (!active) return defaultStatus;
-    return active.status === "checked_in" ? "in_use" : "pending";
+  // สร้างห้องใหม่ (เฉพาะ Admin - แก้ข้อ 4)
+  const handleCreateRoom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanId = newRoomId.trim().toUpperCase();
+    if (!cleanId) return;
+
+    setIsCreatingRoom(true);
+    try {
+      const { error } = await supabase.from("rooms").insert([
+        {
+          id: cleanId,
+          floor: Number(newRoomFloor),
+          capacity: Number(newRoomCapacity),
+          type: newRoomType,
+          status: "available",
+          next_available: "Now",
+        },
+      ]);
+
+      if (error) throw error;
+
+      setShowAddRoomModal(false);
+      setNewRoomId("");
+      fetchSystemData();
+      alert(`เพิ่มห้อง ${cleanId} สำเร็จเรียบร้อย!`);
+    } catch (err: any) {
+      alert("ไม่สามารถสร้างห้องได้: " + err.message);
+    } finally {
+      setIsCreatingRoom(false);
+    }
   };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.replace("/login");
+  };
+
+  const formatTimeShort = (isoStr: string) => {
+    if (!isoStr) return "--:--";
+    if (isoStr.includes("T")) {
+      return new Date(isoStr).toLocaleTimeString("th-TH", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+    }
+    return isoStr;
+  };
+
   const visibleRooms = rooms.filter((r) => {
-    const matchFloor = floorFilter === "all" || r.floor === floorFilter;
+    const matchFloor =
+      selectedFloor === "All" || r.floor === Number(selectedFloor);
     const matchSearch =
       r.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.amenities.some((a) => a.toLowerCase().includes(searchQuery.toLowerCase()));
+      r.type.toLowerCase().includes(searchQuery.toLowerCase());
     return matchFloor && matchSearch;
   });
 
-  const renderBadge = (status: Room["status"]) => {
-    const styles = {
-      available: "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold",
-      pending: "bg-amber-50 text-amber-700 border-amber-300 font-bold",
-      in_use: "bg-rose-50 text-rose-700 border-rose-300 font-bold",
-      unavailable: "bg-slate-100 text-slate-600 border-slate-300 font-bold",
-    };
-    const dotColors = {
-      available: "bg-emerald-500",
-      pending: "bg-amber-500",
-      in_use: "bg-rose-500",
-      unavailable: "bg-slate-400",
-    };
-    const labels = {
-      available: "Available",
-      pending: "Pending",
-      in_use: "In Use",
-      unavailable: "Unavailable",
-    };
-    return (
-      <span className={`inline-flex items-center gap-1.5 text-[11px] border px-2.5 py-0.5 rounded-full ${styles[status]}`}>
-        <span className="relative flex h-1.5 w-1.5">
-          {(status === "available" || status === "pending") && (
-            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${dotColors[status]}`}></span>
-          )}
-          <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${dotColors[status]}`}></span>
+  const renderBadge = (status: "available" | "pending" | "in_use") => {
+    if (status === "available") {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Available
         </span>
-        {labels[status]}
+      );
+    }
+    if (status === "pending") {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> Pending
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span> In Use
       </span>
     );
   };
 
   if (isAuthChecking) {
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white space-y-4">
-        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-xs font-bold text-slate-300 tracking-wider uppercase">
-          กำลังตรวจสอบสิทธิ์การเข้าใช้งานระบบ...
-        </p>
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
+        กำลังตรวจสอบสิทธิ์การใช้งาน...
       </div>
     );
   }
 
   return (
-    <>
-      {/* Top Header จัดลำดับใหม่: ค้นหา -> ปุ่ม Admin -> โควตา -> เวลา -> แจ้งเตือน -> เมนู Profile/Logout (ขวาสุด) */}
-      <header className="px-4 sm:px-6 lg:px-8 py-3 bg-white/85 backdrop-blur-xl border-b border-slate-200/70 flex items-center justify-between sticky top-0 z-20">
-        <div className="relative flex-1 max-w-sm mr-4">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="ค้นหาห้อง FB หรืออุปกรณ์..."
-            className="w-full pl-9 pr-4 py-2 bg-slate-100 hover:bg-slate-100 focus:bg-white text-xs border border-transparent focus:border-orange-500 rounded-full outline-none transition-all"
-          />
-        </div>
-
-        <div className="flex items-center gap-3 sm:gap-4">
-          {isAdmin && (
-            <Link
-              href="/kiosk"
-              className="hidden lg:flex items-center gap-2 bg-slate-900 hover:bg-orange-600 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm"
-            >
-              <Monitor className="w-4 h-4 text-orange-400" />
-              <span>เปิดจอ Kiosk (Admin)</span>
-            </Link>
-          )}
-
-          <div className="hidden md:flex items-center gap-2 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200/70 px-3.5 py-1.5 rounded-full text-xs">
-            <Clock className="w-3.5 h-3.5 text-orange-600" />
-            <span className="text-slate-600 font-medium">โควตา:</span>
-            <span className={`font-black ${remainingQuota === 0 ? "text-rose-600" : "text-orange-600"}`}>
-              {remainingQuota}/4 ชม.
-            </span>
+    <div className="flex-1 flex flex-col min-w-0 min-h-screen bg-slate-100 font-sans text-slate-900">
+      {/* Top Navbar */}
+        <header className="bg-white border-b border-slate-200/80 px-6 py-3.5 flex items-center justify-between gap-4 sticky top-0 z-20">
+          <div className="relative max-w-md w-full">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="ค้นหาห้อง เช่น FB201, Meeting..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-100/80 border border-slate-200/60 rounded-xl pl-10 pr-4 py-2 text-xs outline-none focus:border-orange-500"
+            />
           </div>
 
-          <div className="text-right border-l pl-3 sm:pl-4 border-slate-200">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hidden sm:block">เวลาจริง (24H)</p>
-            <p className="text-sm sm:text-base font-black text-slate-800 leading-none font-mono">
-              {currentTime || "--:--:--"}
-            </p>
-          </div>
-
-          <Link
-            href="/my-booking"
-            className="relative p-2 text-slate-600 hover:bg-orange-50 hover:text-orange-600 rounded-full transition-all"
-          >
-            <Bell className="w-5 h-5" />
-            {activeBookings.length > 0 && (
-              <span className="w-2.5 h-2.5 bg-orange-600 rounded-full absolute top-1.5 right-1.5 ring-2 ring-white animate-pulse"></span>
-            )}
-          </Link>
-
-          {/* UserNav อยู่ตำแหน่งขวาสุดของ Header แล้ว */}
-          <div className="pl-1">
-            <UserNav />
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1550px] w-full mx-auto">
-        <div className="bg-gradient-to-r from-[#111827] via-[#1F2937] to-[#EA580C] rounded-3xl p-6 sm:p-8 text-white shadow-xl shadow-orange-950/10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div className="space-y-2">
-            <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-bold bg-orange-500/20 border border-orange-400/30 px-3 py-1 rounded-full text-orange-300">
-              <Sparkles className="w-3.5 h-3.5" /> FIBO Smart Room Reservation (Live Supabase DB)
-            </span>
-            <h2 className="text-2xl sm:text-4xl font-black tracking-tight">Find Your Space at FIBO</h2>
-            <p className="text-xs sm:text-sm text-slate-200 max-w-xl">
-              ระบบจองห้องเรียนและห้องประชุมอัจฉริยะ ตรวจสอบสถานะแบบเรียลไทม์ และสแกน QR Code หน้าห้องเพื่อเช็คอิน
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+          <div className="flex items-center gap-4">
             {isAdmin && (
-              <Link
-                href="/kiosk"
-                className="flex md:hidden flex-1 px-4 py-3 rounded-2xl bg-slate-900 text-white text-xs font-extrabold shadow-lg items-center justify-center gap-2"
+              <button
+                onClick={() => setShowAddRoomModal(true)}
+                className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-xs transition-colors"
               >
-                <Monitor className="w-4 h-4 text-orange-400" /> เปิดจอ Kiosk (Admin)
-              </Link>
+                <Plus className="w-4 h-4" /> สร้างห้องใหม่
+              </button>
             )}
-            <Link
-              href="/schedule"
-              className="flex-1 md:flex-initial px-4 py-3 rounded-2xl bg-white text-slate-900 hover:bg-orange-50 active:scale-95 text-xs font-extrabold shadow-lg transition-all flex items-center justify-center gap-2"
-            >
-              <CalendarRange className="w-4 h-4 text-orange-600" /> ตารางรวม (Timeline)
-            </Link>
-          </div>
-        </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/70 shadow-xs flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
-              <Layers className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-2xl font-black text-slate-800">{rooms.length}</p>
-              <p className="text-[11px] font-medium text-slate-400">Total Rooms</p>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/70 shadow-xs flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-emerald-50 flex items-center justify-center shrink-0">
-              <div className="w-3.5 h-3.5 rounded-full bg-emerald-500 ring-4 ring-emerald-200/70"></div>
-            </div>
-            <div>
-              <p className="text-2xl font-black text-emerald-600">{availableCount}</p>
-              <p className="text-[11px] font-medium text-slate-400">Available Now</p>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/70 shadow-xs flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-amber-50 flex items-center justify-center shrink-0">
-              <div className="w-3.5 h-3.5 rounded-full bg-amber-400 ring-4 ring-amber-200/70"></div>
-            </div>
-            <div>
-              <p className="text-2xl font-black text-amber-600">{pendingCount}</p>
-              <p className="text-[11px] font-medium text-slate-400">Pending</p>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/70 shadow-xs flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-rose-50 flex items-center justify-center shrink-0">
-              <div className="w-3.5 h-3.5 rounded-full bg-rose-500 ring-4 ring-rose-200/70"></div>
-            </div>
-            <div>
-              <p className="text-2xl font-black text-rose-600">{inUseCount}</p>
-              <p className="text-[11px] font-medium text-slate-400">In Use</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Room Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-8 xl:col-span-9 space-y-4">
-            <div className="flex items-center gap-1.5 bg-slate-200/70 p-1.5 rounded-2xl overflow-x-auto w-fit">
-              {(["all", 2, 3, 4, 5, 6] as const).map((fl) => (
-                <button
-                  key={fl}
-                  onClick={() => setFloorFilter(fl)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    floorFilter === fl
-                      ? "bg-[#EA580C] text-white shadow-md shadow-orange-600/25"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                  }`}
-                >
-                  {fl === "all" ? "All Floors" : `Floor ${fl}`}
-                </button>
-              ))}
+            <div className="hidden sm:flex items-center gap-2 bg-orange-50 border border-orange-200/80 px-3 py-1.5 rounded-xl text-xs font-bold text-orange-700">
+              <Clock className="w-3.5 h-3.5 text-orange-600" />
+              โควตาคงเหลือ: {remainingQuota}/4 ชม.
             </div>
 
-            {isLoading ? (
-              <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center font-bold text-slate-500 text-xs">
-                กำลังเชื่อมต่อข้อมูลจากตึก FIBO (Supabase)...
+            <div className="text-right hidden md:block">
+              <span className="text-[10px] text-slate-400 block">เวลาจริง (24H)</span>
+              <span className="text-xs font-black font-mono text-slate-800">
+                {currentTime || "--:--:--"}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2.5 pl-3 border-l border-slate-200">
+              <div className="text-right">
+                <p className="text-xs font-black text-slate-800 uppercase flex items-center gap-1 justify-end">
+                  {userName}
+                  {isAdmin && (
+                    <span className="text-[9px] bg-orange-600 text-white px-1.5 py-0.2 rounded-md">
+                      ADMIN
+                    </span>
+                  )}
+                </p>
+                <p className="text-[10px] text-slate-400">{userEmail}</p>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {visibleRooms.map((room) => (
-                  <div
-                    key={room.id}
-                    className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-xl hover:-translate-y-1 hover:border-orange-300 transition-all flex flex-col justify-between gap-4"
-                  >
-                    <div>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-                            Floor {room.floor}
-                          </span>
-                          <h3 className="text-xl font-black text-slate-800">{room.id}</h3>
-                        </div>
-                        {renderBadge(getRoomRealtimeStatus(room.id, room.status))}
-                      </div>
-
-                      <div className="mt-2.5 flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-                        <Users className="w-3.5 h-3.5 text-orange-500" />
-                        <span>{room.capacity} people • {room.type}</span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-1.5 mt-3">
-                        {room.amenities.map((item, i) => (
-                          <span key={i} className="text-[10px] bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-lg font-medium">
-                            {item}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="pt-3.5 border-t border-slate-100 space-y-2.5">
-                      <div className="text-[11px] flex justify-between items-center">
-                        <span className="text-slate-400">Status</span>
-                        <span className="font-bold text-slate-700">{room.nextAvailable}</span>
-                      </div>
-
-                      <div className="flex gap-1.5">
-                        {getRoomRealtimeStatus(room.id, room.status) === "available" ? (
-                          <button
-                            onClick={() => handleOpenModal(room)}
-                            className="flex-1 bg-gradient-to-r from-[#EA580C] to-[#F97316] hover:from-orange-700 text-white text-xs font-bold py-2.5 rounded-xl shadow-md shadow-orange-600/20 flex items-center justify-center gap-1.5"
-                          >
-                            <Zap className="w-3.5 h-3.5" /> Quick Book
-                          </button>
-                        ) : room.status === "pending" ? (
-                          <Link
-                            href="/check-in"
-                            className="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5"
-                          >
-                            <KeyRound className="w-3.5 h-3.5" /> Check-In
-                          </Link>
-                        ) : (
-                          <button disabled className="flex-1 bg-slate-100 text-slate-400 text-xs font-semibold py-2.5 rounded-xl cursor-not-allowed">
-                            Not Available
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+              <button
+                onClick={handleLogout}
+                title="ออกจากระบบ"
+                className="p-2 rounded-xl border border-slate-200 text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           </div>
+        </header>
 
-          {/* Right Widget */}
-          <div className="lg:col-span-4 xl:col-span-3 space-y-5">
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Daily Quota</span>
-                <span className="text-xs font-black text-orange-600">{usedHours} / 4 hrs</span>
-              </div>
-              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden p-0.5">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    remainingQuota === 0
-                      ? "bg-gradient-to-r from-rose-500 to-red-600"
-                      : "bg-gradient-to-r from-[#EA580C] to-[#F59E0B]"
-                  }`}
-                  style={{ width: `${Math.min(100, (usedHours / 4) * 100)}%` }}
-                ></div>
-              </div>
-              <p className="text-[11px] text-slate-500">
-                สิทธิ์จองคงเหลือวันนี้ <span className="font-bold text-slate-800">{remainingQuota} ชั่วโมง</span>
+        {/* Body */}
+        <main className="p-6 space-y-6 max-w-7xl w-full mx-auto">
+          {/* Banner */}
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-orange-600 rounded-3xl p-6 sm:p-8 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
+            <div className="space-y-2">
+              <span className="inline-block text-[10px] font-bold uppercase tracking-wider bg-white/15 px-3 py-1 rounded-full">
+                FIBO SMART ROOM RESERVATION (LIVE SUPABASE DB)
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-black">Find Your Space at FIBO</h2>
+              <p className="text-xs text-slate-200 max-w-xl">
+                ระบบจองห้องเรียนและห้องประชุมอัจฉริยะ ตรวจสอบสถานะแบบเรียลไทม์ จองล่วงหน้าได้ 1 วัน และสแกน QR Code หน้าห้องเพื่อเช็คอิน
               </p>
             </div>
+            <Link
+              href="/schedule"
+              className="bg-white text-slate-900 hover:bg-orange-50 font-bold text-xs px-5 py-3 rounded-2xl shadow-md transition-all shrink-0 flex items-center gap-2"
+            >
+              <Calendar className="w-4 h-4 text-orange-600" /> ตารางรวม (Timeline)
+            </Link>
+          </div>
 
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
-              <div className="flex justify-between items-center">
-                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Active Pass</h4>
-                <Link href="/my-booking" className="text-[11px] text-orange-600 hover:underline font-semibold">
-                  View all ({activeBookings.length})
-                </Link>
+          {/* 4 การ์ดสรุปสถานะห้องแบบ Real-time (แก้ข้อ 1) */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 flex items-center gap-4 shadow-2xs">
+              <div className="w-11 h-11 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center">
+                <Layers className="w-5 h-5" />
               </div>
+              <div>
+                <p className="text-2xl font-black text-slate-900">{totalRoomsCount}</p>
+                <p className="text-xs text-slate-400 font-medium">Total Rooms</p>
+              </div>
+            </div>
 
-              {activeBookings.length > 0 ? (
-                <div className="p-4 bg-gradient-to-br from-slate-50 to-orange-50/40 rounded-2xl border border-orange-200/60 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-lg font-black text-slate-900">{activeBookings[0].room}</span>
-                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${
-                      activeBookings[0].status === "checked_in" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                    }`}>
-                      {activeBookings[0].status === "checked_in" ? "In Room" : "Waiting Check-in"}
-                    </span>
-                  </div>
-                  <p className="text-xs font-bold text-slate-700">{activeBookings[0].title}</p>
-                  <div className="text-xs text-slate-500 space-y-1">
-                    <div>เวลา: {activeBookings[0].startTime} – {activeBookings[0].endTime}</div>
-                  </div>
-                  {activeBookings[0].status === "pending" ? (
-                    <Link
-                      href="/check-in"
-                      className="w-full bg-[#EA580C] hover:bg-orange-700 text-white font-bold py-2 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5"
-                    >
-                      <KeyRound className="w-3.5 h-3.5" /> ไปหน้า Check-In
-                    </Link>
-                  ) : (
-                    <button
-                      onClick={() => handleCompleteBooking(activeBookings[0].id)}
-                      className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1.5"
-                    >
-                      <LogOut className="w-3.5 h-3.5" /> คืนห้อง (Check Out)
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400 py-6 text-center">ไม่มีรายการจองที่ค้างอยู่</p>
-              )}
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 flex items-center gap-4 shadow-2xs">
+              <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <span className="w-3.5 h-3.5 rounded-full bg-emerald-500"></span>
+              </div>
+              <div>
+                <p className="text-2xl font-black text-emerald-600">{availableCount}</p>
+                <p className="text-xs text-slate-400 font-medium">Available Now</p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 flex items-center gap-4 shadow-2xs">
+              <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <span className="w-3.5 h-3.5 rounded-full bg-amber-500"></span>
+              </div>
+              <div>
+                <p className="text-2xl font-black text-amber-500">{pendingCount}</p>
+                <p className="text-xs text-slate-400 font-medium">Pending</p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 flex items-center gap-4 shadow-2xs">
+              <div className="w-11 h-11 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                <span className="w-3.5 h-3.5 rounded-full bg-rose-500"></span>
+              </div>
+              <div>
+                <p className="text-2xl font-black text-rose-600">{inUseCount}</p>
+                <p className="text-xs text-slate-400 font-medium">In Use</p>
+              </div>
             </div>
           </div>
-        </div>
-      </main>
 
-      {/* Modal Popup จองห้องพร้อม Dropdown เวลา 24 ชม. */}
+          {/* เนื้อหาหลัก + แถบขวา */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* ซ้าย: รายการห้อง */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {["All", "2", "3", "4", "5", "6"].map((fl) => (
+                  <button
+                    key={fl}
+                    onClick={() => setSelectedFloor(fl)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                      selectedFloor === fl
+                        ? "bg-[#EA580C] text-white shadow-sm"
+                        : "bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50"
+                    }`}
+                  >
+                    {fl === "All" ? "All Floors" : `Floor ${fl}`}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {visibleRooms.map((room) => {
+                  const realtimeStatus = getRoomRealtimeStatus(room.id);
+                  const roomTodayBookings = allBookings.filter(
+                    (b) =>
+                      b.room_id === room.id &&
+                      b.date === todayStr &&
+                      (b.status === "pending" || b.status === "checked_in")
+                  );
+
+                  return (
+                    <div
+                      key={room.id}
+                      className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs flex flex-col justify-between space-y-4 hover:border-orange-300 transition-all"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            FLOOR {room.floor}
+                          </span>
+                          {renderBadge(realtimeStatus)}
+                        </div>
+                        <h3 className="text-xl font-black text-slate-900">{room.id}</h3>
+                        <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5 text-orange-500" />
+                          {room.capacity} people • {room.type}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2.5 pt-2 border-t border-slate-100">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400">คิวจองวันนี้</span>
+                          <span className="font-bold text-slate-700">
+                            {roomTodayBookings.length > 0
+                              ? `มี ${roomTodayBookings.length} ช่วงเวลา`
+                              : "ว่างทุกช่วงเวลา"}
+                          </span>
+                        </div>
+
+                        {/* เปิดให้กดเลือกเวลาจองได้เสมอ (แก้ข้อ 8) */}
+                        <button
+                          onClick={() => handleOpenModal(room)}
+                          className="w-full py-2.5 px-4 rounded-xl bg-[#EA580C] hover:bg-orange-700 text-white font-bold text-xs shadow-sm shadow-orange-600/15 transition-all flex items-center justify-center gap-1.5"
+                        >
+                          <Zap className="w-3.5 h-3.5" /> Quick Book
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ขวา: โควตา และ Active Pass */}
+            <div className="space-y-4">
+              {/* โควตา (ไม่คืนเมื่อกด Check Out) */}
+              <div className="bg-white rounded-2xl p-5 border border-slate-200/80 space-y-3 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase text-slate-700">
+                    DAILY QUOTA
+                  </span>
+                  <span className="text-xs font-black text-orange-600">
+                    ใช้ไป {usedHoursToday} / 4 hrs
+                  </span>
+                </div>
+                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#EA580C] rounded-full transition-all"
+                    style={{ width: `${Math.min(100, (usedHoursToday / 4) * 100)}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  สิทธิ์การจองคงเหลือวันนี้{" "}
+                  <span className="font-bold text-slate-800">{remainingQuota} ชั่วโมง</span>{" "}
+                  (รีเซ็ตทุกเที่ยงคืน และไม่คืนโควตาเมื่อกดคืนห้อง)
+                </p>
+              </div>
+
+              {/* Active Pass */}
+              <div className="bg-white rounded-2xl p-5 border border-slate-200/80 space-y-4 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase text-slate-700">
+                    ACTIVE PASS (1 USER / 1 ROOM)
+                  </span>
+                  <Link
+                    href="/my-booking"
+                    className="text-[11px] font-bold text-orange-600 hover:underline"
+                  >
+                    View all ({myActiveBookings.length})
+                  </Link>
+                </div>
+
+                {myActiveBookings.length === 0 ? (
+                  <p className="text-xs text-slate-400 py-6 text-center">
+                    ยังไม่มีรายการจองที่กำลังใช้งานอยู่
+                  </p>
+                ) : (
+                  myActiveBookings.map((b) => (
+                    <div
+                      key={b.id}
+                      className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/60 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-lg font-black text-slate-900">
+                          {b.room_id}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                            b.status === "checked_in"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {b.status === "checked_in" ? "In Room" : "Pending Check-In"}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-slate-700">{b.title}</p>
+                      <p className="text-[11px] text-slate-500">
+                        วันที่: {b.date} | เวลา: {formatTimeShort(b.start_time)} –{" "}
+                        {formatTimeShort(b.end_time)} ({b.duration_hours} ชม.)
+                      </p>
+
+                      {b.status === "pending" ? (
+                        <Link
+                          href="/check-in"
+                          className="w-full py-2.5 px-4 rounded-xl bg-[#EA580C] hover:bg-orange-700 text-white font-bold text-xs flex items-center justify-center gap-1.5"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" /> ไปหน้าสแกน Check-In
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={() => handleCheckOut(b)}
+                          className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5"
+                        >
+                          คืนห้อง (Check Out)
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </main>
+      
+
+      {/* Modal จองห้อง */}
       {modalRoom && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100 text-slate-800">
-            <div className="flex justify-between items-center border-b pb-3 border-slate-100">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-xl font-black text-slate-900">จองห้อง {modalRoom.id}</h3>
-                <p className="text-xs text-slate-500 font-medium">ชั้น {modalRoom.floor} • รองรับ {modalRoom.capacity} คน</p>
+                <h3 className="text-xl font-black text-slate-900">
+                  จองห้อง {modalRoom.id}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  ชั้น {modalRoom.floor} • รองรับ {modalRoom.capacity} คน ({modalRoom.type})
+                </p>
               </div>
-              <button 
-                onClick={() => setModalRoom(null)} 
-                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
+              <button
+                onClick={() => setModalRoom(null)}
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-3.5 text-xs">
+            {/* แสดงคิวที่ถูกจองแล้วของห้องนี้ในวันที่เลือก (เชื่อมกับตาราง Schedule) */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2">
+              <p className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-orange-600" />
+                ช่วงเวลาที่มีผู้จองแล้วในวันที่ {formDate}:
+              </p>
+              {modalRoomBookingsOnDate.length === 0 ? (
+                <p className="text-xs text-emerald-600 font-bold">
+                  ✓ ยังไม่มีคิวจองในวันนี้ สามารถเลือกเวลาได้ทุกช่วง
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {modalRoomBookingsOnDate.map((b) => (
+                    <span
+                      key={b.id}
+                      className="text-[11px] bg-rose-100 text-rose-800 font-bold px-2.5 py-1 rounded-lg border border-rose-200"
+                    >
+                      {formatTimeShort(b.start_time)} – {formatTimeShort(b.end_time)} น.
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleConfirmBooking} className="space-y-4">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">หัวข้อการใช้งาน</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  หัวข้อการใช้งาน <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="text"
+                  required
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
-                  className="w-full bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-semibold border border-slate-200 rounded-xl p-2.5 outline-none focus:border-orange-500 transition-colors"
-                  placeholder="เช่น ประชุมโปรเจกต์กลุ่ม"
+                  placeholder="ระบุวัตถุประสงค์ เช่น ประชุมโปรเจกต์, ติววิชา..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium outline-none focus:border-orange-500"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">วันที่ต้องการใช้งาน</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  วันที่ต้องการใช้งาน (จองล่วงหน้าได้ไม่เกิน 1 วัน)
+                </label>
                 <input
                   type="date"
-                  min={new Date().toISOString().split("T")[0]}
-                  value={bookingDate}
-                  onChange={(e) => setBookingDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold"
+                  value={formDate}
+                  min={todayStr}
+                  max={tomorrowStr}
+                  onChange={(e) => setFormDate(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none focus:border-orange-500"
                 />
               </div>
 
-              {/* ปรับเป็น Dropdown 24 ชม. */}
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">เวลาเริ่ม (24 ชม.)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    เวลาเริ่มต้น (ทุก 5 นาที)
+                  </label>
                   <select
                     value={formStart}
                     onChange={(e) => setFormStart(e.target.value)}
-                    className="w-full bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-bold border border-slate-200 rounded-xl p-2.5 outline-none focus:border-orange-500 cursor-pointer"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-orange-500"
                   >
-                    {TIME_OPTIONS.map((time) => (
-                      <option key={`start-${time}`} value={time}>
-                        {time} น.
-                      </option>
-                    ))}
+                    {TIME_OPTIONS.map((t) => {
+                      const taken = isTimeSlotTaken(t);
+                      return (
+                        <option key={t} value={t} disabled={taken}>
+                          {t} {taken ? "(จองแล้ว)" : ""}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
+
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">เวลาสิ้นสุด (24 ชม.)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    เวลาสิ้นสุด (ข้ามวันได้ ไม่เกิน 4 ชม.)
+                  </label>
                   <select
                     value={formEnd}
                     onChange={(e) => setFormEnd(e.target.value)}
-                    className="w-full bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-bold border border-slate-200 rounded-xl p-2.5 outline-none focus:border-orange-500 cursor-pointer"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-orange-500"
                   >
-                    {TIME_OPTIONS.map((time) => (
-                      <option key={`end-${time}`} value={time}>
-                        {time} น.
+                    {TIME_OPTIONS.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
                       </option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              <div
-                className={`p-3.5 rounded-2xl border flex items-start gap-2.5 ${
-                  canSubmitBooking
-                    ? "bg-orange-50 border-orange-200/80 text-orange-950"
-                    : "bg-rose-50 border-rose-200 text-rose-700"
-                }`}
-              >
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-orange-600" />
-                <div className="space-y-0.5">
-                  <p className="font-bold text-slate-900">
-                    ระยะเวลาที่เลือก: {selectedDuration > 0 ? `${selectedDuration} ชม.` : "ช่วงเวลาไม่ถูกต้อง"}
-                  </p>
-                  <p className="text-[11px] text-slate-600">
-                    โควตาคงเหลือวันนี้: <strong className="text-orange-600 font-black">{remainingQuota} ชั่วโมง</strong>
-                  </p>
-
-                  {isPastTime && (
-                    <p className="text-[11px] font-bold text-rose-600">
-                      ⚠️ ไม่สามารถจองเวลาย้อนหลังได้
-                    </p>
-                  )}
-
-                  {isTimeConflicting && (
-                    <p className="text-[11px] font-bold text-rose-600">
-                      ⚠️ ช่วงเวลานี้มีคนจองห้องนี้ไว้แล้ว กรุณาเลือกเวลาอื่น
-                    </p>
-                  )}
-
-                  {isOverDailyQuota && !isTimeConflicting && !isPastTime && (
-                    <p className="text-[11px] font-bold text-rose-600">
-                      ⚠️ เกินโควตาคงเหลือ ({remainingQuota} ชม.)
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">จำนวนคน</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    จำนวนผู้เข้าใช้งาน (คน)
+                  </label>
                   <input
                     type="number"
                     min={1}
                     max={modalRoom.capacity}
                     value={formPeople}
                     onChange={(e) => setFormPeople(Number(e.target.value))}
-                    className="w-full bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-bold border border-slate-200 rounded-xl p-2.5 outline-none focus:border-orange-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none focus:border-orange-500"
                   />
                 </div>
+
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">ชื่อผู้จอง</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    ชื่อผู้จอง (ดึงจากบัญชีผู้ใช้)
+                  </label>
                   <input
                     type="text"
                     value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    className="w-full bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-semibold border border-slate-200 rounded-xl p-2.5 outline-none focus:border-orange-500"
+                    readOnly
+                    className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-600 cursor-not-allowed"
                   />
                 </div>
               </div>
-            </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-              <button
-                onClick={() => setModalRoom(null)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
-              >
-                ยกเลิก
-              </button>
-              <button
-                onClick={(e) => handleConfirmBooking(e)}
-                disabled={!canSubmitBooking}
-                className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                  canSubmitBooking
-                    ? "bg-[#EA580C] hover:bg-orange-700 active:scale-95 text-white shadow-md shadow-orange-600/20"
-                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                }`}
-              >
-                ยืนยันการจอง
-              </button>
-            </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setModalRoom(null)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-5 py-2.5 rounded-xl bg-[#EA580C] hover:bg-orange-700 disabled:bg-slate-300 text-white text-xs font-bold shadow-md shadow-orange-600/20"
+                >
+                  {isSubmitting ? "กำลังบันทึก..." : "ยืนยันการจอง"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
-    </>
+
+      {/* Modal สร้างห้องใหม่สำหรับ Admin (แก้ข้อ 4) */}
+      {showAddRoomModal && isAdmin && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-bold uppercase text-emerald-600">
+                  ADMIN MANAGEMENT
+                </span>
+                <h3 className="text-lg font-black text-slate-900">
+                  เพิ่มห้องใหม่เข้าสู่ระบบ
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowAddRoomModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateRoom} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  รหัสห้อง (เช่น FB405)
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newRoomId}
+                  onChange={(e) => setNewRoomId(e.target.value)}
+                  placeholder="FB..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold uppercase outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    ชั้น (Floor)
+                  </label>
+                  <select
+                    value={newRoomFloor}
+                    onChange={(e) => setNewRoomFloor(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                  >
+                    {[2, 3, 4, 5, 6].map((fl) => (
+                      <option key={fl} value={fl}>
+                        ชั้น {fl}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    ความจุ (จำนวนคน)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={newRoomCapacity}
+                    onChange={(e) => setNewRoomCapacity(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  ประเภทห้อง
+                </label>
+                <select
+                  value={newRoomType}
+                  onChange={(e) => setNewRoomType(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                >
+                  <option value="Lecture Room">Lecture Room</option>
+                  <option value="Meeting Room">Meeting Room</option>
+                  <option value="Lab / Workshop">Lab / Workshop</option>
+                  <option value="Seminar Room">Seminar Room</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddRoomModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingRoom}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
+                >
+                  {isCreatingRoom ? "กำลังสร้าง..." : "บันทึกห้องใหม่"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    {/* วางโค้ด Modal แจ้งเตือนตรงนี้ */}
+      {timeOutAlertBooking && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200">
+            <div className="w-16 h-16 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mx-auto">
+              <Clock className="w-8 h-8 animate-bounce" />
+            </div>
+            
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-black uppercase text-rose-600 bg-rose-50 px-2.5 py-0.5 rounded-full">
+                TIME'S UP • CHECK-OUT
+              </span>
+              <h3 className="text-xl font-black text-slate-900">
+                หมดเวลาการใช้งานห้อง {timeOutAlertBooking.room_id}
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                รอบการจองหัวข้อ <span className="font-bold text-slate-700">"{timeOutAlertBooking.title}"</span> สิ้นสุดลงแล้ว ระบบได้ทำการ Check-Out ให้อัตโนมัติเรียบร้อยแล้วครับ
+              </p>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-3 text-[11px] text-slate-600 text-left space-y-1">
+              <p>• กรุณาตรวจสอบสัมภาระส่วนตัว</p>
+              <p>• ปิดเครื่องปรับอากาศและไฟก่อนออกจากห้อง</p>
+              <p>• ส่งมอบห้องให้แก่ผู้เข้าใช้งานคิวถัดไป</p>
+            </div>
+
+            <button
+              onClick={() => setTimeOutAlertBooking(null)}
+              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-orange-600 text-white text-xs font-bold transition-all shadow-md"
+            >
+              รับทราบ
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
