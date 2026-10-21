@@ -12,10 +12,11 @@ import {
   LogOut, Sparkles, CalendarRange, AlertCircle, KeyRound, Monitor
 } from "lucide-react";
 
-// สร้างตัวเลือกเวลาแบบ 24 ชั่วโมง ทุกๆ 30 นาที ตั้งแต่ 00:00 ถึง 23:30 น.
-const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
-  const h = String(Math.floor(i / 2)).padStart(2, "0");
-  const m = i % 2 === 0 ? "00" : "30";
+// สร้างตัวเลือกเวลาแบบ 24 ชั่วโมง ทุกๆ 5 นาที (00:00 - 23:55 น.) รวม 288 ช่วงเวลา
+const TIME_OPTIONS = Array.from({ length: 288 }, (_, i) => {
+  const totalMinutes = i * 5;
+  const h = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+  const m = String(totalMinutes % 60).padStart(2, "0");
   return `${h}:${m}`;
 });
 
@@ -52,11 +53,11 @@ export default function HomePage() {
 
   // Modal State
   const [modalRoom, setModalRoom] = useState<Room | null>(null);
-  const [formTitle, setFormTitle] = useState("ประชุมโปรเจกต์กลุ่ม");
+  const [formTitle, setFormTitle] = useState("");
   const [formStart, setFormStart] = useState("09:00");
   const [formEnd, setFormEnd] = useState("10:00");
   const [formPeople, setFormPeople] = useState(4);
-  const [formName, setFormName] = useState("Thawisap N.");
+  const [formName, setFormName] = useState("");
 
   const checkAuthAndFetchData = async () => {
     try {
@@ -230,11 +231,31 @@ export default function HomePage() {
   const canSubmitBooking =
     !isTimeInvalid && !isOverSingleLimit && !isOverDailyQuota && !isTimeConflicting;
 
-  const handleOpenModal = (room: Room) => {
+  const handleOpenModal = async (room: Room) => {
     setModalRoom(room);
+    setFormTitle(""); // เคลียร์ให้ว่างเพื่อให้ผู้ใช้พิมพ์เอง
     setFormPeople(Math.min(4, room.capacity));
-    setFormStart(getNextHourString());
-    setFormEnd(getNextTwoHoursString());
+
+    // กำหนดเวลาเริ่มต้นเป็นเวลาปัจจุบันปัดขึ้นเป็นหลัก 5 นาที
+    const now = new Date();
+    const nextFive = Math.ceil(now.getMinutes() / 5) * 5;
+    now.setMinutes(nextFive, 0, 0);
+    const startH = String(now.getHours()).padStart(2, "0");
+    const startM = String(now.getMinutes()).padStart(2, "0");
+    setFormStart(`${startH}:${startM}`);
+
+    // สิ้นสุดหลังเริ่ม 15 นาที
+    const end = new Date(now.getTime() + 15 * 60000);
+    const endH = String(end.getHours()).padStart(2, "0");
+    const endM = String(end.getMinutes()).padStart(2, "0");
+    setFormEnd(`${endH}:${endM}`);
+
+    // ดึงชื่อของผู้ใช้ที่ล็อกอินอยู่จริงมาใส่
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      const uName = session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "ผู้ใช้งาน";
+      setFormName(uName);
+    }
   };
 
   const handleConfirmBooking = async (e?: React.MouseEvent) => {
@@ -282,6 +303,14 @@ export default function HomePage() {
     }
   };
 
+  // ฟังก์ชันคำนวณสถานะห้องตามการจองจริง
+  const getRoomRealtimeStatus = (roomId: string, defaultStatus: Room["status"]) => {
+    const active = bookings.find(
+      (b) => b.room === roomId && (b.status === "checked_in" || b.status === "pending")
+    );
+    if (!active) return defaultStatus;
+    return active.status === "checked_in" ? "in_use" : "pending";
+  };
   const visibleRooms = rooms.filter((r) => {
     const matchFloor = floorFilter === "all" || r.floor === floorFilter;
     const matchSearch =
@@ -504,7 +533,7 @@ export default function HomePage() {
                           </span>
                           <h3 className="text-xl font-black text-slate-800">{room.id}</h3>
                         </div>
-                        {renderBadge(room.status)}
+                        {renderBadge(getRoomRealtimeStatus(room.id, room.status))}
                       </div>
 
                       <div className="mt-2.5 flex items-center gap-1.5 text-xs text-slate-500 font-medium">
@@ -528,7 +557,7 @@ export default function HomePage() {
                       </div>
 
                       <div className="flex gap-1.5">
-                        {room.status === "available" ? (
+                        {getRoomRealtimeStatus(room.id, room.status) === "available" ? (
                           <button
                             onClick={() => handleOpenModal(room)}
                             className="flex-1 bg-gradient-to-r from-[#EA580C] to-[#F97316] hover:from-orange-700 text-white text-xs font-bold py-2.5 rounded-xl shadow-md shadow-orange-600/20 flex items-center justify-center gap-1.5"

@@ -1,163 +1,172 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { INITIAL_BOOKINGS, Booking } from "../data";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import Link from "next/link";
-import { CheckCircle2, Copy, Check, Tablet, KeyRound, ArrowLeft, Calendar, Clock, MapPin } from "lucide-react";
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  ArrowLeft,
+  KeyRound,
+  Monitor,
+  CheckCircle2,
+  Copy,
+} from "lucide-react";
 
 export default function BookingConfirmedPage() {
-  const [latestBooking, setLatestBooking] = useState<Booking | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [booking, setBooking] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const saved = localStorage.getItem("sb_bookings");
-    if (saved) {
-      const list: Booking[] = JSON.parse(saved);
-      if (list.length > 0) {
-        setLatestBooking(list[0]);
+    const fetchLatestBooking = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session?.user?.email) {
+          setIsLoading(false);
+          return;
+        }
+
+        // ดึงรายการจองล่าสุดของผู้ใช้นี้
+        const { data, error } = await supabase
+          .from("bookings")
+          .select("*")
+          .eq("email", session.user.email)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!error && data) {
+          setBooking(data);
+        }
+      } catch (err) {
+        console.error("Fetch latest booking error:", err);
+      } finally {
+        setIsLoading(false);
       }
-    } else if (INITIAL_BOOKINGS.length > 0) {
-      setLatestBooking(INITIAL_BOOKINGS[0]);
-    }
+    };
+
+    fetchLatestBooking();
   }, []);
 
-  const getRoomPin = (roomId?: string) => {
-    if (!roomId) return "8888";
-    const num = roomId.replace(/\D/g, "") || "202";
-    return `${num}4`.slice(0, 4).padStart(4, "8");
+  const formatDisplayTime = (isoOrTime: string) => {
+    if (!isoOrTime) return "--:--";
+    if (isoOrTime.includes("T")) {
+      const d = new Date(isoOrTime);
+      return d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", hour12: false });
+    }
+    return isoOrTime;
   };
 
-  const handleCopy = () => {
-    if (!latestBooking) return;
-    navigator.clipboard.writeText(latestBooking.id);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  if (!latestBooking) {
+  if (isLoading) {
     return (
-      <div className="p-8 text-center space-y-4">
-        <p className="text-sm text-slate-500">ไม่พบข้อมูลการจองล่าสุด</p>
-        <Link href="/" className="inline-block px-4 py-2 bg-orange-600 text-white rounded-xl text-xs font-bold">
-          กลับหน้าหลัก
-        </Link>
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6 text-slate-500 font-bold text-xs">
+        กำลังโหลดข้อมูลการจอง...
       </div>
     );
   }
 
-  const roomPin = getRoomPin(latestBooking.room);
+  const roomName = booking?.room_id || "FB201";
+  const floorNum = roomName.match(/\d+/)?.[0]?.[0] || "2";
+  const startTimeDisplay = formatDisplayTime(booking?.start_time);
+  const endTimeDisplay = formatDisplayTime(booking?.end_time);
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-3xl w-full mx-auto space-y-6">
-      {/* Banner สถานะสำเร็จ */}
-      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-3xl p-6 flex items-center gap-4 text-emerald-800">
-        <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/20">
-          <CheckCircle2 className="w-7 h-7" />
-        </div>
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900">จองห้องสำเร็จเรียบร้อย!</h2>
-          <p className="text-xs sm:text-sm text-emerald-700 font-medium">
-            ระบบได้บันทึกการจองและล็อกช่วงเวลาสำหรับห้อง {latestBooking.room} เรียบร้อยแล้ว
-          </p>
-        </div>
-      </div>
-
-      {/* บัตร Digital Pass */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden">
-        <div className="bg-gradient-to-r from-[#111827] via-[#1F2937] to-[#EA580C] px-6 py-4 text-white flex justify-between items-center">
-          <span className="text-xs font-extrabold uppercase tracking-widest text-orange-300">
-            FIBO Official Booking Pass
+    <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4 sm:p-6 font-sans">
+      <div className="max-w-2xl w-full bg-white rounded-3xl shadow-2xl border border-slate-200/80 overflow-hidden">
+        {/* Header Pass */}
+        <div className="bg-gradient-to-r from-slate-900 to-orange-600 px-6 sm:px-8 py-5 flex items-center justify-between text-white">
+          <span className="text-xs sm:text-sm font-black tracking-wider uppercase flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" /> FIBO OFFICIAL BOOKING PASS
           </span>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-bold bg-white/15 px-3 py-1 rounded-full">
-              #{latestBooking.id}
-            </span>
-            <button
-              onClick={handleCopy}
-              className="p-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
-              title="คัดลอก Booking ID"
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-white" />}
-            </button>
-          </div>
+          <span className="text-xs font-mono font-bold bg-white/20 px-3 py-1 rounded-full flex items-center gap-1.5">
+            #{booking?.id ? booking.id.slice(0, 8).toUpperCase() : "BK-LIVE"}
+          </span>
         </div>
 
+        {/* Content */}
         <div className="p-6 sm:p-8 space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 pb-6 border-b border-slate-100">
+          <div className="flex justify-between items-start">
             <div>
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">ห้องที่จอง</span>
-              <h3 className="text-4xl font-black text-slate-900 mt-0.5">{latestBooking.room}</h3>
-              <p className="text-sm font-semibold text-slate-600 mt-1">{latestBooking.title}</p>
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                ห้องที่จอง
+              </span>
+              <h2 className="text-3xl sm:text-4xl font-black text-slate-900 mt-1">{roomName}</h2>
+              <p className="text-xs sm:text-sm font-medium text-slate-600 mt-1">
+                {booking?.title || "การประชุมโปรเจกต์"}
+              </p>
             </div>
 
-            <div className="bg-orange-50 border border-orange-200/80 rounded-2xl p-4 text-center sm:text-right">
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 block">
+            <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 text-center min-w-[110px]">
+              <span className="text-[10px] font-bold text-orange-600 uppercase tracking-wider block">
                 รหัส PIN หน้าห้อง
               </span>
-              <span className="text-3xl font-black font-mono tracking-widest text-[#EA580C]">
-                {roomPin}
+              <span className="text-2xl sm:text-3xl font-black text-orange-600 font-mono tracking-widest">
+                {roomName.replace(/\D/g, "") || "201"}
               </span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-            <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-              <Calendar className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
+          {/* Grid ข้อมูลเวลาจริง */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-slate-50 border border-slate-200/70 rounded-2xl p-4 flex items-center gap-3">
+              <Calendar className="w-5 h-5 text-orange-600 shrink-0" />
               <div>
-                <span className="text-slate-400 block font-medium">วันที่</span>
-                <span className="font-bold text-slate-800">{latestBooking.date}</span>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">วันที่</p>
+                <p className="text-xs font-bold text-slate-800">{booking?.date || "Today"}</p>
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-              <Clock className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
+            <div className="bg-slate-50 border border-slate-200/70 rounded-2xl p-4 flex items-center gap-3">
+              <Clock className="w-5 h-5 text-orange-600 shrink-0" />
               <div>
-                <span className="text-slate-400 block font-medium">ช่วงเวลา</span>
-                <span className="font-bold text-slate-800">
-                  {latestBooking.startTime} – {latestBooking.endTime} ({latestBooking.durationHours} ชม.)
-                </span>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">ช่วงเวลา</p>
+                <p className="text-xs font-bold text-slate-800">
+                  {startTimeDisplay} – {endTimeDisplay} ({booking?.duration_hours || 1} ชม.)
+                </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-              <MapPin className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
+            <div className="bg-slate-50 border border-slate-200/70 rounded-2xl p-4 flex items-center gap-3">
+              <MapPin className="w-5 h-5 text-orange-600 shrink-0" />
               <div>
-                <span className="text-slate-400 block font-medium">ตำแหน่ง</span>
-                <span className="font-bold text-slate-800">ชั้น {latestBooking.floor} ตึก FIBO</span>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">ตำแหน่ง</p>
+                <p className="text-xs font-bold text-slate-800">ชั้น {floorNum} ตึก FIBO</p>
               </div>
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/80 text-amber-900 text-xs space-y-1">
-            <p className="font-bold">⚠️ เงื่อนไขการเข้าใช้งาน (15-Minute Auto-Release):</p>
-            <p className="text-[11px] text-amber-800">
-              กรุณากดเช็คอินผ่าน One-Tap Pass หรือกรอกรหัส PIN บนแท็บเล็ตหน้าห้องภายใน 15 นาทีหลังจากเริ่มเวลา หากไม่เช็คอิน ระบบจะยกเลิกการจองและปล่อยห้องว่างให้ผู้อื่นทันที
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-amber-900 text-xs space-y-1">
+            <p className="font-bold flex items-center gap-1.5">
+              ⚠️ เงื่อนไขการเข้าใช้งาน (15-Minute Auto-Release):
+            </p>
+            <p className="text-amber-800 leading-relaxed text-[11px]">
+              กรุณาสแกน QR Code หน้าจอ Kiosk หรือกดเช็คอินผ่านหน้าระบบภายใน 15 นาทีหลังจากเริ่มเวลา หากไม่เช็คอิน ระบบจะยกเลิกการจองและปล่อยห้องว่างให้ผู้อื่นทันที
             </p>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <Link
               href="/"
-              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-all"
+              className="flex-1 py-3 px-4 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs text-center transition-colors flex items-center justify-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" /> กลับหน้าหลัก
             </Link>
-
-            <div className="flex gap-2 w-full sm:w-auto">
-              <Link
-                href={`/kiosk?room=${latestBooking.room}`}
-                className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl border border-orange-200 bg-orange-50 text-orange-700 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-orange-100 transition-all"
-              >
-                <Tablet className="w-4 h-4" /> ดูจอหน้าห้อง (Kiosk)
-              </Link>
-              <Link
-                href="/check-in"
-                className="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl bg-[#EA580C] hover:bg-orange-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-orange-600/20 transition-all"
-              >
-                <KeyRound className="w-4 h-4" /> ไปหน้า Smart Check-In
-              </Link>
-            </div>
+            <Link
+              href="/kiosk"
+              className="flex-1 py-3 px-4 rounded-xl border border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-xs text-center transition-colors flex items-center justify-center gap-2"
+            >
+              <Monitor className="w-4 h-4 text-orange-600" /> ดูจอหน้าห้อง (Kiosk)
+            </Link>
+            <Link
+              href="/check-in"
+              className="flex-1 py-3 px-4 rounded-xl bg-[#EA580C] hover:bg-orange-700 text-white font-bold text-xs text-center shadow-md shadow-orange-600/20 transition-all flex items-center justify-center gap-2"
+            >
+              <KeyRound className="w-4 h-4" /> ไปหน้า Smart Check-In
+            </Link>
           </div>
         </div>
       </div>
