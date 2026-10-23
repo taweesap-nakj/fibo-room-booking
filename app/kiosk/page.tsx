@@ -12,12 +12,17 @@ import {
   ArrowLeft, 
   Users, 
   QrCode,
-  Radio
+  Radio,
+  Cpu,
+  Layers,
+  Sparkles,
+  ShieldCheck,
+  ScanLine
 } from "lucide-react";
 
 interface RoomItem {
   id: string;
-  name: string;
+  name?: string;
   capacity?: number;
   floor?: number;
   status?: string;
@@ -56,7 +61,7 @@ export default function KioskPage() {
     verifyAdmin();
   }, [router]);
 
-  // 2. ดึงรายชื่อห้องทั้งหมด
+  // 2. ดึงรายชื่อห้องทั้งหมด (กรองห้อง SB- และ FIBO- ชุดเก่าออก)
   const fetchRooms = async () => {
     try {
       const { data, error } = await supabase
@@ -67,10 +72,14 @@ export default function KioskPage() {
       if (error) throw error;
 
       if (data && data.length > 0) {
-        setRooms(data);
-        // ถ้าห้องที่เลือกไม่อยู่ในรายการ ให้ใช้ห้องแรกเป็นค่าเริ่มต้น
-        if (!selectedRoomId) {
-          setSelectedRoomId(data[0].id);
+        const cleanRooms = data.filter(
+          (r: any) =>
+            !String(r.id).startsWith("SB-") &&
+            !String(r.id).startsWith("FIBO-")
+        );
+        setRooms(cleanRooms);
+        if (!selectedRoomId && cleanRooms.length > 0) {
+          setSelectedRoomId(cleanRooms[0].id);
         }
       }
     } catch (err) {
@@ -78,12 +87,11 @@ export default function KioskPage() {
     }
   };
 
-  // 3. ดึงคิวการจองของห้องที่เลือก (คำนวณตามเวลาจริง)
+  // 3. ดึงคิวการจองของห้องที่เลือก
   const fetchBookings = async () => {
     if (!selectedRoomId) return;
 
     try {
-      // ตัดรอบการจองที่หมดอายุทันทีก่อนดึงข้อมูล
       await autoReleaseExpiredBookings();
 
       const now = new Date();
@@ -92,7 +100,6 @@ export default function KioskPage() {
       const day = String(now.getDate()).padStart(2, "0");
       const todayStr = `${year}-${month}-${day}`;
 
-      // ดึงการจองของห้องนี้ในวันนี้ ที่ยังไม่ถูกยกเลิก
       const { data, error } = await supabase
         .from("bookings")
         .select("*")
@@ -103,7 +110,6 @@ export default function KioskPage() {
 
       if (error) throw error;
 
-      // กรองเฉพาะรายการที่ยังไม่หมดเวลาสิ้นสุด
       const nowMs = Date.now();
       const validBookings = (data || []).filter((b: any) => {
         let endMs = new Date(b.end_time).getTime();
@@ -122,12 +128,10 @@ export default function KioskPage() {
     }
   };
 
-  // ดึงห้องตอนเริ่มหน้าเว็บ
   useEffect(() => {
     fetchRooms();
   }, []);
 
-  // เมื่อเลือกเปลี่ยนห้องใน Dropdown ให้ดึงคิวการจองใหม่ทันที
   useEffect(() => {
     if (selectedRoomId) {
       setIsLoading(true);
@@ -135,7 +139,6 @@ export default function KioskPage() {
     }
   }, [selectedRoomId]);
 
-  // ตัวนับเวลานาฬิกาเดินทุกวินาที และโหลดข้อมูลอัตโนมัติทุก 10 วินาที
   useEffect(() => {
     const clockTimer = setInterval(() => {
       setCurrentTime(new Date());
@@ -153,7 +156,6 @@ export default function KioskPage() {
     };
   }, [selectedRoomId]);
 
-  // ฟังก์ชันแปลงสตริงเวลาให้เป็น Timestamp (ms)
   const getBookingTimestamp = (dateStr: string, timeVal: string): number => {
     if (!timeVal) return NaN;
     if (timeVal.includes("T")) return new Date(timeVal).getTime();
@@ -161,7 +163,6 @@ export default function KioskPage() {
     return new Date(`${dateStr}T${cleanTime}`).getTime();
   };
 
-  // ฟังก์ชันจัดรูปแบบเวลาสำหรับแสดงผล (HH:mm)
   const formatDisplayTime = (timeVal: string) => {
     if (!timeVal) return "";
     if (timeVal.includes("T")) {
@@ -171,7 +172,6 @@ export default function KioskPage() {
     return timeVal.substring(0, 5);
   };
 
-  // ตรวจสอบหารายการจองที่กำลังเกิดขึ้น "ณ วินาทีนี้"
   const nowMs = currentTime.getTime();
   const currentBooking = bookings.find((b) => {
     if (b.status !== "pending" && b.status !== "checked_in") return false;
@@ -187,161 +187,187 @@ export default function KioskPage() {
 
   if (isAdminChecking) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-xs font-mono text-orange-400">
+        <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-2xl">
+          <Cpu className="w-5 h-5 text-orange-500 animate-spin" />
+          <span>INITIALIZING FIBO KIOSK HUD...</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-900 flex flex-col font-sans">
-      {/* Top Header Bar */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans relative overflow-x-hidden selection:bg-orange-500 selection:text-white">
+      {/* Dynamic Cyber Ambient Lighting */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
+        <div className="absolute -top-32 -left-32 w-[32rem] h-[32rem] bg-orange-500/10 rounded-full blur-[120px] animate-pulse" />
+        <div 
+          className="absolute bottom-0 -right-32 w-[36rem] h-[36rem] bg-sky-500/10 rounded-full blur-[140px]" 
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b0a_1px,transparent_1px),linear-gradient(to_bottom,#1e293b0a_1px,transparent_1px)] bg-[size:40px_40px] opacity-40" />
+      </div>
+
+      {/* Top Header Bar: Sci-Fi Glass */}
+      <header className="bg-slate-900/60 backdrop-blur-2xl border-b border-white/10 px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4 sticky top-0 z-20 shadow-2xl">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-orange-600 text-white flex items-center justify-center font-black text-xl shadow-md shadow-orange-500/20">
-            F
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-600 p-0.5 shadow-lg shadow-orange-500/25 flex items-center justify-center">
+            <div className="w-full h-full bg-slate-950/80 rounded-[14px] flex items-center justify-center">
+              <Cpu className="w-5 h-5 text-orange-400 animate-pulse" />
+            </div>
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="font-black text-slate-900 tracking-tight text-lg">FIBO Smart Signage</h1>
-              <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                ADMIN KIOSK MODE
+              <h1 className="font-black text-white tracking-tight text-lg">FIBO Smart Signage</h1>
+              <span className="text-[10px] font-black bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2.5 py-0.5 rounded-full uppercase tracking-wider font-mono">
+                KIOSK HUD ACTIVE
               </span>
             </div>
-            <p className="text-xs text-slate-500">
-              จอแสดงสถานะหน้าห้องและ Dynamic QR Code สำหรับสแกนเช็คอิน
+            <p className="text-xs text-slate-400">
+              หน้าจอบริหารสถานะห้องแล็บ และ Dynamic QR Code สำหรับสแกนเข้าห้อง
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
-            <span>เลือกห้องแสดงผล:</span>
+        <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-300 bg-slate-900/80 border border-white/10 px-3 py-1.5 rounded-2xl shadow-inner">
+            <span className="text-slate-400 text-[11px]">เลือกห้อง:</span>
             <select
               value={selectedRoomId}
               onChange={(e) => setSelectedRoomId(e.target.value)}
-              className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs"
+              className="bg-transparent border-none text-xs font-black text-orange-400 focus:outline-none cursor-pointer"
             >
               {rooms.map((room) => (
-                <option key={room.id} value={room.id}>
-                  ห้อง {room.name || room.id} ({room.id})
+                <option key={room.id} value={room.id} className="bg-slate-900 text-slate-200">
+                  ห้อง {room.id} {room.name ? `(${room.name})` : ""}
                 </option>
               ))}
             </select>
           </div>
+
           <Link
             href="/"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-slate-200 hover:text-white transition-all shadow-sm active:scale-95"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
+            <ArrowLeft className="w-3.5 h-3.5 text-orange-400" />
             กลับหน้าหลัก
           </Link>
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="flex-1 flex items-center justify-center p-6 md:p-10">
-        <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-2xl max-w-5xl w-full grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
+      {/* Main Container HUD Glass Card */}
+      <main className="flex-1 flex items-center justify-center p-6 md:p-10 relative z-10">
+        <div className="bg-slate-900/60 backdrop-blur-3xl rounded-3xl p-8 border border-white/15 shadow-[0_20px_70px_rgba(0,0,0,0.6)] max-w-5xl w-full grid grid-cols-1 md:grid-cols-12 gap-8 items-center relative overflow-hidden">
           
-          {/* Left Column: ข้อมูลห้อง สถานะ และรายการจอง */}
+          {/* Subtle Cyber Sheen across container */}
+          <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-orange-500/10 via-transparent to-transparent pointer-events-none rounded-bl-full" />
+
+          {/* Left Column: Room info & Status */}
           <div className="md:col-span-7 space-y-6">
             <div>
-              <span className="text-xs font-black text-orange-600 tracking-wider uppercase">
-                FIBO SMART SPACE • FLOOR {currentRoom?.floor || 2}
-              </span>
-              <div className="flex items-baseline justify-between mt-1">
-                <h2 className="text-5xl font-black text-slate-900 tracking-tight">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black text-orange-400 tracking-wider uppercase font-mono bg-orange-500/10 border border-orange-500/20 px-2.5 py-0.5 rounded-md">
+                  FIBO LAB NODE • FLOOR {currentRoom?.floor || 2}
+                </span>
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+              </div>
+
+              <div className="flex items-baseline justify-between mt-2">
+                <h2 className="text-6xl font-black text-white tracking-tight drop-shadow-md">
                   {selectedRoomId}
                 </h2>
-                <div className="bg-slate-50 border border-slate-200 px-4 py-2 rounded-2xl text-right">
-                  <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
-                    เวลาปัจจุบัน (CURRENT TIME)
+                <div className="bg-slate-950/70 border border-white/10 px-4 py-2 rounded-2xl text-right backdrop-blur-md shadow-inner">
+                  <span className="text-[9px] font-black text-slate-400 block uppercase tracking-wider font-mono">
+                    REALTIME 24H
                   </span>
-                  <span className="text-2xl font-black text-slate-900 tracking-wider">
+                  <span className="text-2xl font-black text-white font-mono tracking-wider">
                     {currentTime.toLocaleTimeString("th-TH", { hour12: false })}
                   </span>
                 </div>
               </div>
-              <p className="text-xs text-slate-500 font-semibold mt-2 flex items-center gap-1.5">
-                <Users className="w-4 h-4 text-slate-400" />
-                จุได้สูงสุด {currentRoom?.capacity || 40} คน
+
+              <p className="text-xs text-slate-400 font-semibold mt-2 flex items-center gap-2">
+                <Users className="w-4 h-4 text-orange-400" />
+                รองรับสูงสุด {currentRoom?.capacity || 40} คน • {currentRoom?.status || "Active Lab"}
               </p>
             </div>
 
-            {/* กล่องสถานะห้องปัจจุบัน */}
+            {/* Status Aura Reactor Card */}
             {currentBooking && currentBooking.status === "pending" ? (
-              <div className="bg-amber-50/80 border-2 border-amber-300 rounded-2xl p-4.5 space-y-1">
+              <div className="bg-gradient-to-r from-amber-500/15 to-orange-500/15 border-2 border-amber-500/40 rounded-2xl p-5 space-y-1.5 shadow-[0_0_30px_rgba(245,158,11,0.15)] relative overflow-hidden backdrop-blur-md">
                 <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-                  <h3 className="text-sm font-black text-amber-900 tracking-wide uppercase">
-                    WAITING FOR CHECK-IN (รอยืนยันสิทธิ์)
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+                  <h3 className="text-sm font-black text-amber-300 tracking-wider uppercase font-mono">
+                    WAITING FOR CHECK-IN (ถึงคิวการจองแล้ว)
                   </h3>
                 </div>
-                <p className="text-xs text-amber-800 font-medium">
-                  ถึงคิวการใช้งานแล้ว: <span className="font-bold underline">{currentBooking.title}</span> (กรุณาสแกน QR Code เพื่อเริ่มใช้งาน)
+                <p className="text-xs text-amber-200/90 font-medium leading-relaxed">
+                  หัวข้อ: <span className="font-black text-white underline">{currentBooking.title}</span> (กรุณาสแกน QR Code หน้าจอเพื่อเริ่มใช้งานห้อง)
                 </p>
               </div>
             ) : currentBooking && currentBooking.status === "checked_in" ? (
-              <div className="bg-blue-50/80 border-2 border-blue-300 rounded-2xl p-4.5 space-y-1">
+              <div className="bg-gradient-to-r from-sky-500/15 to-blue-500/15 border-2 border-sky-500/40 rounded-2xl p-5 space-y-1.5 shadow-[0_0_30px_rgba(56,189,248,0.15)] relative overflow-hidden backdrop-blur-md">
                 <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
-                  <h3 className="text-sm font-black text-blue-900 tracking-wide uppercase">
+                  <span className="w-2.5 h-2.5 rounded-full bg-sky-400 animate-pulse" />
+                  <h3 className="text-sm font-black text-sky-300 tracking-wider uppercase font-mono">
                     OCCUPIED (ห้องกำลังถูกใช้งาน)
                   </h3>
                 </div>
-                <p className="text-xs text-blue-800 font-medium">
-                  กำลังใช้งาน: <span className="font-bold">{currentBooking.title}</span>
+                <p className="text-xs text-sky-200/90 font-medium">
+                  กำลังใช้งาน: <span className="font-black text-white">{currentBooking.title}</span>
                 </p>
               </div>
             ) : (
-              <div className="bg-emerald-50/80 border-2 border-emerald-300 rounded-2xl p-4.5 space-y-1">
+              <div className="bg-gradient-to-r from-emerald-500/15 to-teal-500/15 border-2 border-emerald-500/40 rounded-2xl p-5 space-y-1.5 shadow-[0_0_30px_rgba(16,185,129,0.15)] relative overflow-hidden backdrop-blur-md">
                 <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                  <h3 className="text-sm font-black text-emerald-900 tracking-wide uppercase">
-                    ROOM AVAILABLE (ห้องว่าง)
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]" />
+                  <h3 className="text-sm font-black text-emerald-300 tracking-wider uppercase font-mono">
+                    ROOM AVAILABLE (ห้องว่างพร้อมใช้งาน)
                   </h3>
                 </div>
-                <p className="text-xs text-emerald-700 font-medium">
-                  ห้องว่างพร้อมใช้งาน สามารถทำรายการจองผ่านเว็บไซต์ระบบ FIBO Smart Space
+                <p className="text-xs text-emerald-200/90 font-medium">
+                  ห้องว่างพร้อมใช้งาน สามารถจองผ่านเว็บไซต์ FIBO Smart Space เพื่อเปิดสิทธิ์ใช้งานทันที
                 </p>
               </div>
             )}
 
-            {/* ตารางคิวการจองวันนี้ */}
-            <div className="space-y-3 pt-2 border-t border-slate-100">
+            {/* Glass Schedule Queue List */}
+            <div className="space-y-3 pt-3 border-t border-white/10">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                  ตารางการจองวันนี้ ({bookings.length} รายการ)
+                <h4 className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-orange-400" /> ตารางการจองวันนี้ ({bookings.length} รายการ)
                 </h4>
-                <span className="text-[10px] font-bold text-slate-400">
-                  อัปเดตแบบอัตโนมัติ
+                <span className="text-[10px] font-bold text-slate-400 font-mono">
+                  AUTO-SYNC 10S
                 </span>
               </div>
 
               {bookings.length === 0 ? (
-                <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-6 text-center text-xs text-slate-400 font-medium">
+                <div className="bg-slate-950/40 border border-dashed border-white/10 rounded-2xl p-6 text-center text-xs text-slate-500 font-medium">
                   ยังไม่มีรายการจองสำหรับห้องนี้ในวันนี้
                 </div>
               ) : (
-                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                   {bookings.map((b) => (
                     <div
                       key={b.id}
-                      className="bg-slate-50 border border-slate-200/70 rounded-2xl p-3 flex items-center justify-between text-xs"
+                      className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl p-3 flex items-center justify-between text-xs transition-all backdrop-blur-md"
                     >
                       <div className="space-y-0.5">
-                        <span className="font-bold text-slate-800 block">
+                        <span className="font-bold text-white block">
                           {b.title}
                         </span>
-                        <span className="text-[11px] text-slate-500 font-medium">
-                          {formatDisplayTime(b.start_time)} - {formatDisplayTime(b.end_time)}
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          {formatDisplayTime(b.start_time)} - {formatDisplayTime(b.end_time)} น.
                         </span>
                       </div>
                       <span
-                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
                           b.status === "checked_in"
-                            ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
-                            : "bg-amber-100 text-amber-700 border border-amber-200"
+                            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                            : "bg-amber-500/20 text-amber-300 border-amber-500/30"
                         }`}
                       >
                         {b.status === "checked_in" ? "เช็คอินแล้ว" : "รอเช็คอิน"}
@@ -353,54 +379,62 @@ export default function KioskPage() {
             </div>
           </div>
 
-          {/* Right Column: แสดง Dynamic QR Code หรือ ไอคอนสถานะห้องว่าง */}
-          <div className="md:col-span-5 flex flex-col items-center justify-center p-6 text-center border-t md:border-t-0 md:border-l border-slate-100 min-h-[340px]">
+          {/* Right Column: Holographic QR Target Frame */}
+          <div className="md:col-span-5 flex flex-col items-center justify-center p-6 text-center border-t md:border-t-0 md:border-l border-white/10 min-h-[360px] relative">
             {currentBooking && currentBooking.status === "pending" ? (
-              <div className="space-y-4 animate-in fade-in zoom-in duration-200">
-                <div className="p-4 bg-white rounded-3xl border-2 border-orange-200 shadow-xl inline-block">
+              <div className="space-y-4 animate-in fade-in zoom-in duration-300">
+                {/* Tech Bracket QR Frame */}
+                <div className="relative p-5 bg-white rounded-3xl shadow-[0_0_50px_rgba(249,115,22,0.35)] inline-block">
+                  {/* Futuristic Corner Sensor Markers */}
+                  <div className="absolute -top-2 -left-2 w-5 h-5 border-t-2 border-l-2 border-orange-500" />
+                  <div className="absolute -top-2 -right-2 w-5 h-5 border-t-2 border-r-2 border-orange-500" />
+                  <div className="absolute -bottom-2 -left-2 w-5 h-5 border-b-2 border-l-2 border-orange-500" />
+                  <div className="absolute -bottom-2 -right-2 w-5 h-5 border-b-2 border-r-2 border-orange-500" />
+
                   <QRCodeSVG 
                     value={selectedRoomId} 
                     size={210} 
                     level="H"
                   />
                 </div>
+
                 <div className="space-y-1.5 max-w-xs mx-auto">
-                  <div className="inline-flex items-center gap-1.5 bg-orange-50 text-orange-600 px-3 py-1 rounded-full text-xs font-bold border border-orange-200">
-                    <QrCode className="w-3.5 h-3.5" />
-                    สแกนเพื่อเช็คอินเข้าห้อง
+                  <div className="inline-flex items-center gap-1.5 bg-orange-500/20 text-orange-400 px-3.5 py-1 rounded-full text-xs font-black border border-orange-500/30">
+                    <ScanLine className="w-3.5 h-3.5 animate-pulse" />
+                    SCAN QR TO CHECK-IN
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
-                    เปิดเมนู Check In บนมือถือของคุณ แล้วเปิดกล้องสแกน QR Code บนจอนี้เพื่อยืนยันสิทธิ์
+                  <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
+                    เปิดเมนู Check In บนมือถือของคุณ แล้วสแกนเพื่อยืนยันสิทธิ์เข้าใช้งานห้อง
                   </p>
                 </div>
               </div>
             ) : currentBooking && currentBooking.status === "checked_in" ? (
-              <div className="space-y-3">
-                <div className="w-20 h-20 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto shadow-inner">
-                  <Clock className="w-10 h-10 animate-pulse" />
+              <div className="space-y-4 text-center">
+                <div className="w-24 h-24 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-400 flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(56,189,248,0.2)]">
+                  <Clock className="w-12 h-12 animate-pulse" />
                 </div>
-                <div className="space-y-1">
-                  <h3 className="text-base font-black text-slate-900">ห้องกำลังถูกใช้งาน</h3>
-                  <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                    การจองรอบนี้ได้รับการเช็คอินเรียบร้อยแล้ว และจะเช็คเอาท์อัตโนมัติเมื่อครบกำหนดเวลา
+                <div className="space-y-1.5">
+                  <h3 className="text-lg font-black text-white">ห้องกำลังถูกใช้งาน</h3>
+                  <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
+                    คิวการจองนี้เช็คอินเรียบร้อยแล้ว ระบบจะ Check-Out อัตโนมัติเมื่อครบกำหนดเวลา
                   </p>
                 </div>
               </div>
             ) : (
-              <div className="space-y-3">
-                <div className="w-20 h-20 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
-                  <CheckCircle2 className="w-10 h-10" />
+              <div className="space-y-4 text-center">
+                <div className="w-24 h-24 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(16,185,129,0.2)]">
+                  <CheckCircle2 className="w-12 h-12" />
                 </div>
-                <div className="space-y-1">
-                  <h3 className="text-base font-black text-slate-900">ห้องว่างพร้อมใช้งาน</h3>
-                  <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-                    เมื่อถึงเวลาที่มีคิวจอง ระบบจะแสดง QR Code ที่หน้าจอนี้โดยอัตโนมัติเพื่อให้ผู้จองสแกนเข้าใช้งาน
+                <div className="space-y-1.5">
+                  <h3 className="text-lg font-black text-white">ห้องว่างพร้อมใช้งาน</h3>
+                  <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
+                    เมื่อถึงเวลาที่มีคิวจอง ระบบจะแสดง QR Code บนหน้านี้โดยอัตโนมัติเพื่อให้ผู้จองสแกนเข้าห้อง
                   </p>
                 </div>
                 <div className="pt-2">
-                  <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-[11px] font-bold border border-emerald-200">
-                    <Radio className="w-3 h-3 text-emerald-500 animate-pulse" />
-                    เชื่อมต่อฐานข้อมูล Realtime แล้ว
+                  <span className="inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 px-3 py-1 rounded-full text-[11px] font-bold border border-emerald-500/30">
+                    <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
+                    LIVE SENSOR SYNCED
                   </span>
                 </div>
               </div>
