@@ -63,6 +63,7 @@ export default function Home() {
   const [formEnd, setFormEnd] = useState<string>("10:00");
   const [formPeople, setFormPeople] = useState<number>(4);
   const [formName, setFormName] = useState<string>("");
+  const [activeTimePicker, setActiveTimePicker] = useState<"start" | "end">("start");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [timeOutAlertBooking, setTimeOutAlertBooking] = useState<any | null>(null);
   // Modal สร้างห้องใหม่ (เฉพาะ Admin)
@@ -793,43 +794,123 @@ export default function Home() {
                 />
               </div>
 
-              {/* ปรับเป็น 1 คอลัมน์บนมือถือ และ 2 คอลัมน์บนคอม */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    เวลาเริ่มต้น (ทุก 5 นาที)
-                  </label>
-                  <select
-                    value={formStart}
-                    onChange={(e) => setFormStart(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-orange-500"
-                  >
-                    {TIME_OPTIONS.map((t) => {
-                      const taken = isTimeSlotTaken(t);
-                      return (
-                        <option key={t} value={t} disabled={taken}>
-                          {t} {taken ? "(จองแล้ว)" : ""}
-                        </option>
-                      );
-                    })}
-                  </select>
+{/* Modern Time Picker Component */}
+              <div className="space-y-3 bg-slate-50 border border-slate-200/90 rounded-2xl p-4">
+                <div className="text-center space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    SET YOUR TIME
+                  </span>
+                  <p className="text-xs text-slate-500">เลือกช่วงเวลาเริ่มต้นและสิ้นสุดการใช้งานห้อง</p>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    เวลาสิ้นสุด (ข้ามวันได้ ไม่เกิน 4 ชม.)
-                  </label>
-                  <select
-                    value={formEnd}
-                    onChange={(e) => setFormEnd(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-orange-500"
+                {/* แถบแสดงเวลา Start -> End สไตล์รูปอ้างอิง */}
+                <div className="flex items-center justify-center gap-4 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTimePicker("start")}
+                    className={`text-center px-4 py-2 rounded-2xl transition-all ${
+                      activeTimePicker === "start"
+                        ? "bg-white shadow-md border-2 border-orange-500 scale-105"
+                        : "bg-slate-100/80 border border-slate-200 hover:bg-white"
+                    }`}
                   >
-                    {TIME_OPTIONS.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Start</span>
+                    <span className={`text-xl font-black ${activeTimePicker === "start" ? "text-orange-600" : "text-slate-800"}`}>
+                      {formStart}
+                    </span>
+                  </button>
+
+                  <span className="text-slate-400 text-base font-bold">→</span>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTimePicker("end")}
+                    className={`text-center px-4 py-2 rounded-2xl transition-all ${
+                      activeTimePicker === "end"
+                        ? "bg-white shadow-md border-2 border-sky-500 scale-105"
+                        : "bg-slate-100/80 border border-slate-200 hover:bg-white"
+                    }`}
+                  >
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">End</span>
+                    <span className={`text-xl font-black ${activeTimePicker === "end" ? "text-sky-600" : "text-slate-800"}`}>
+                      {formEnd}
+                    </span>
+                  </button>
+                </div>
+
+                {/* คอลัมน์เลื่อนเลือก ชั่วโมง (HH) และ นาที (MM) */}
+                <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-inner">
+                  <div className="grid grid-cols-2 gap-2 text-center text-[10px] font-black text-slate-400 border-b border-slate-100 pb-1.5 mb-1.5">
+                    <span>HOURS</span>
+                    <span>MINUTES</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 h-36">
+                    {/* คอลัมน์ชั่วโมง 00 - 23 */}
+                    <div className="overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                      {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map((hour) => {
+                        const currentVal = activeTimePicker === "start" ? formStart : formEnd;
+                        const [currH, currM] = currentVal.split(":");
+                        const isSelected = currH === hour;
+
+                        return (
+                          <button
+                            key={hour}
+                            type="button"
+                            onClick={() => {
+                              const newTime = `${hour}:${currM}`;
+                              if (activeTimePicker === "start") setFormStart(newTime);
+                              else setFormEnd(newTime);
+                            }}
+                            className={`w-full py-1.5 text-xs font-bold rounded-lg transition-all ${
+                              isSelected
+                                ? activeTimePicker === "start"
+                                  ? "bg-orange-500 text-white shadow-sm"
+                                  : "bg-sky-500 text-white shadow-sm"
+                                : "text-slate-600 hover:bg-slate-100"
+                            }`}
+                          >
+                            {hour}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* คอลัมน์นาที 00 - 55 (ทีละ 5 นาที) */}
+                    <div className="overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                      {["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"].map((minute) => {
+                        const currentVal = activeTimePicker === "start" ? formStart : formEnd;
+                        const [currH, currM] = currentVal.split(":");
+                        const isSelected = currM === minute;
+                        const slotTime = `${currH}:${minute}`;
+                        const isTaken = activeTimePicker === "start" && isTimeSlotTaken(slotTime);
+
+                        return (
+                          <button
+                            key={minute}
+                            type="button"
+                            disabled={isTaken}
+                            onClick={() => {
+                              const newTime = `${currH}:${minute}`;
+                              if (activeTimePicker === "start") setFormStart(newTime);
+                              else setFormEnd(newTime);
+                            }}
+                            className={`w-full py-1.5 text-xs font-bold rounded-lg transition-all ${
+                              isTaken
+                                ? "text-slate-300 line-through cursor-not-allowed"
+                                : isSelected
+                                ? activeTimePicker === "start"
+                                  ? "bg-orange-500 text-white shadow-sm"
+                                  : "bg-sky-500 text-white shadow-sm"
+                                : "text-slate-600 hover:bg-slate-100"
+                            }`}
+                          >
+                            {minute} {isTaken ? "(จองแล้ว)" : ""}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
 
