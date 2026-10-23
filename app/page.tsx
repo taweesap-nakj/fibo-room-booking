@@ -485,7 +485,7 @@ export default function Home() {
             className="inline-flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 text-white text-xs font-black px-3 sm:px-4 py-2 rounded-2xl shadow-sm transition-all"
           >
             <Sparkles className="w-3.5 h-3.5 text-white" />
-            <span className="hidden sm:inline">AI Smart Match</span>
+            <span className="hidden sm:inline">Room Match</span>
             <span className="sm:hidden">AI Match</span>
           </button>
 

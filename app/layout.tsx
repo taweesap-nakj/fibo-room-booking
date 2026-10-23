@@ -83,7 +83,7 @@ export default function RootLayout({
               <div className="fibo-glass-nav rounded-2xl p-3.5 max-w-[220px] text-xs shadow-xl">
                 <div className="flex items-center justify-between gap-2 mb-1 border-b border-slate-100 pb-1">
                   <span className="flex items-center gap-1 font-black text-[10px] text-orange-600 uppercase">
-                    <Cpu className="w-3 h-3 text-orange-500" /> FIBO AI Bot
+                    <Cpu className="w-3 h-3 text-orange-500" /> FIBO Bot
                   </span>
                   <button
                     type="button"

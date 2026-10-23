@@ -13,31 +13,195 @@ body {
 }
 
 /* ========================================================
-   FIBO ROBOTICS: SAFE LIQUID GLASS & GRID (iOS COMPATIBLE)
+   FIBO ROBOTICS: BLUEPRINT MATRIX & LIGHTWEIGHT HUD BACKGROUND
    ======================================================== */
 
 .fibo-cyber-grid {
+  position: relative;
   background-color: #f8fafc;
+  /* ผสมผสาน 3 เลเยอร์: แสงนวลมุมจอ + จุด Dot Matrix + เส้น Crosshair CAD (+) */
   background-image: 
-    linear-gradient(to right, rgba(226, 232, 240, 0.6) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(226, 232, 240, 0.6) 1px, transparent 1px);
-  background-size: 36px 36px;
+    /* 1. แสงสีส้ม FIBO และฟ้า Cyan ละมุนที่มุมจอ (ไม่มีการใช้ blur filter ให้หน่วงเครื่อง) */
+    radial-gradient(circle at 0% 0%, rgba(249, 115, 22, 0.07) 0%, transparent 45%),
+    radial-gradient(circle at 100% 100%, rgba(14, 165, 233, 0.07) 0%, transparent 45%),
+    /* 2. จุด Dot Matrix สไตล์แผงวงจร (ระยะห่าง 24px) */
+    radial-gradient(rgba(148, 163, 184, 0.28) 1px, transparent 1px),
+    /* 3. มาร์กเกอร์ Crosshair (+) แบบพิมพ์เขียววิศวกรรม (ระยะห่าง 120px) */
+    url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M60 52v16M52 60h16' stroke='%23CBD5E1' stroke-width='1.2' stroke-linecap='round'/%3E%3Cpath d='M0 0h120v120H0z' fill='none' stroke='%23E2E8F0' stroke-width='0.75' stroke-dasharray='4 8' opacity='0.7'/%3E%3C/svg%3E");
+  background-size: 100% 100%, 100% 100%, 24px 24px, 120px 120px;
+}
+
+/* ลายน้ำเทคโนโลยีและพิกัดดาวเทียม FIBO KMUTT บนพื้นหลัง */
+.fibo-cyber-grid::before {
+  content: "FIBO // ROBOTICS & AUTOMATION SYSTEM • 13.6513° N, 100.4947° E";
+  position: fixed;
+  bottom: 80px;
+  left: 280px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.35em;
+  color: rgba(148, 163, 184, 0.22);
+  pointer-events: none;
+  z-index: 0;
+  text-transform: uppercase;
+}
+
+/* เส้นเลเซอร์เรดาร์สแกนระบบผ่านหน้าจอแบบบางเฉียบ */
+.fibo-cyber-grid::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 90px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(249, 115, 22, 0.045) 50%,
+    transparent
+  );
+  pointer-events: none;
+  z-index: 1;
+  animation: radarScan 11s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes radarScan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+/* ========================================================
+   LIQUID GLASS & INTERACTIVE CARDS
+   ======================================================== */
+
+@keyframes cardGlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .fibo-glass-card {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.82));
+  position: relative;
+  z-index: 2;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.86));
   border: 1px solid rgba(255, 255, 255, 0.95);
   box-shadow: 
     0 10px 30px -5px rgba(15, 23, 42, 0.05),
     inset 0 1px 2px 0 rgba(255, 255, 255, 1);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.25s ease;
+  animation: cardGlideIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
+.grid > .fibo-glass-card:nth-child(1) { animation-delay: 0.04s; }
+.grid > .fibo-glass-card:nth-child(2) { animation-delay: 0.08s; }
+.grid > .fibo-glass-card:nth-child(3) { animation-delay: 0.12s; }
+.grid > .fibo-glass-card:nth-child(4) { animation-delay: 0.16s; }
+.grid > .fibo-glass-card:nth-child(5) { animation-delay: 0.20s; }
+.grid > .fibo-glass-card:nth-child(6) { animation-delay: 0.24s; }
+.grid > .fibo-glass-card:nth-child(n+7) { animation-delay: 0.28s; }
+
+.fibo-glass-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(249, 115, 22, 0.35);
+  box-shadow: 
+    0 16px 36px -8px rgba(249, 115, 22, 0.12),
+    0 4px 12px 0 rgba(15, 23, 42, 0.04),
+    inset 0 1px 2px 0 rgba(255, 255, 255, 1);
+}
+
+/* แสงสะท้อนวิ่งผ่านปุ่ม Quick Book เมื่อชี้การ์ด */
+.fibo-glass-card button {
+  position: relative;
+  overflow: hidden;
+}
+
+.fibo-glass-card button::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -120%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.32),
+    transparent
+  );
+  transform: skewX(-20deg);
+  transition: left 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fibo-glass-card:hover button::after {
+  left: 140%;
+}
+
+/* ไฟเซนเซอร์สถานะ Breathing LED */
+@keyframes sensorBreathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.22);
+    opacity: 0.7;
+  }
+}
+
+.fibo-glass-card span.bg-emerald-500,
+.fibo-glass-card span.bg-amber-500,
+.fibo-glass-card span.bg-rose-500 {
+  display: inline-block;
+  animation: sensorBreathe 2.8s ease-in-out infinite;
+}
+
+/* ป๊อปอัปสปริงพรีเมียม */
+@keyframes springPop {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.fixed.inset-0 > div {
+  animation: springPop 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* แถบนำทางกระจก */
 .fibo-glass-nav {
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(226, 232, 240, 0.9);
   box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.1);
+}
+
+button:active,
+.fibo-glass-nav a:active {
+  transform: scale(0.95);
+  transition: transform 0.1s ease;
+}
+
+@keyframes botIdleFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.fixed.bottom-6 svg {
+  animation: botIdleFloat 3.2s ease-in-out infinite;
 }
 
 @keyframes botJump {
@@ -49,6 +213,7 @@ body {
   animation: botJump 0.45s ease-out;
 }
 
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

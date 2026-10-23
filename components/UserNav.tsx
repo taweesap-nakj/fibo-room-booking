@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -11,7 +12,6 @@ import {
   BookOpen,
   KeyRound,
   Monitor,
-  ShieldAlert,
 } from "lucide-react";
 
 export default function UserNav() {
@@ -28,7 +28,6 @@ export default function UserNav() {
 
       const email = session.user.email || "";
 
-      // ตรวจสอบ Role จาก profiles หรืออีเมล Admin
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
@@ -61,10 +60,17 @@ export default function UserNav() {
   return (
     <aside className="w-64 bg-[#0F172A] text-white flex-col justify-between hidden lg:flex shrink-0 min-h-screen">
       <div className="p-6 space-y-8">
-        {/* Logo */}
+        {/* Logo FIBO แบบไม่มีกรอบขาวหนา */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-[#EA580C] flex items-center justify-center font-black text-lg shadow-lg shadow-orange-600/30">
-            FB
+          <div className="w-10 h-10 flex items-center justify-center shrink-0">
+            <Image
+              src="/logo.svg"
+              alt="FIBO Logo"
+              width={40}
+              height={40}
+              className="w-full h-full object-contain rounded-xl"
+              priority
+            />
           </div>
           <div>
             <h1 className="font-black text-sm tracking-wide">FIBO SMART SPACE</h1>
@@ -100,7 +106,7 @@ export default function UserNav() {
             );
           })}
 
-          {/* Admin Controls Section */}
+          {/* Admin Controls */}
           {isAdmin && (
             <div className="pt-4 mt-4 border-t border-slate-800 space-y-1.5">
               <span className="px-4 text-[10px] font-bold uppercase tracking-wider text-orange-400">
