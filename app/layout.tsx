@@ -13,7 +13,6 @@ import {
   KeyRound,
   Cpu,
   X,
-  Sparkles,
 } from "lucide-react";
 
 const navItems = [
@@ -43,7 +42,6 @@ export default function RootLayout({
   const [botMood, setBotMood] = useState<"happy" | "radar" | "star">("happy");
   const [isBouncing, setIsBouncing] = useState(false);
 
-  // สลับบทพูดและเปลี่ยนสีหน้าเมื่อคลิกตัวหุ่นยนต์
   const handleBotInteract = () => {
     setIsBouncing(true);
     setTimeout(() => setIsBouncing(false), 550);
@@ -76,36 +74,7 @@ export default function RootLayout({
         <title>FIBO Smart Building | Room Reservation</title>
       </head>
       <body className="bg-[#f8fafc] text-slate-800 font-sans antialiased selection:bg-orange-500 selection:text-white overflow-x-hidden">
-        <style jsx global>{`
-          .fibo-cyber-grid {
-            background-color: #f8fafc;
-            background-image: 
-              radial-gradient(at 0% 0%, rgba(249, 115, 22, 0.08) 0px, transparent 50%),
-              radial-gradient(at 100% 100%, rgba(14, 165, 233, 0.08) 0px, transparent 50%),
-              linear-gradient(to right, rgba(226, 232, 240, 0.5) 1px, transparent 1px),
-              linear-gradient(to bottom, rgba(226, 232, 240, 0.5) 1px, transparent 1px);
-            background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
-          }
-
-          @keyframes ambientFloat {
-            0%, 100% { transform: translate(0px, 0px) scale(1); }
-            50% { transform: translate(30px, -20px) scale(1.08); }
-          }
-          .animate-ambient-pulse {
-            animation: ambientFloat 14s infinite ease-in-out alternate;
-          }
-
-          .fibo-glass-nav {
-            background: rgba(255, 255, 255, 0.75);
-            backdrop-filter: blur(20px) saturate(180%);
-            -webkit-backdrop-filter: blur(20px) saturate(180%);
-            border: 1px solid rgba(255, 255, 255, 0.85);
-            box-shadow: 0 12px 36px -6px rgba(15, 23, 42, 0.12),
-                        inset 0 1px 2px 0 rgba(255, 255, 255, 0.9);
-          }
-        `}</style>
-
-        {/* Ambient Glows */}
+        {/* Dynamic Ambient Glows */}
         <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
           <div className="absolute -top-32 -left-32 w-96 h-96 bg-orange-400/15 rounded-full blur-3xl animate-ambient-pulse" />
           <div 
@@ -118,7 +87,7 @@ export default function RootLayout({
           />
         </div>
 
-        {/* Interactive Companion: น้องหุ่นยนต์ FIBO AI Bot (คลิกเพื่อคุย) */}
+        {/* Interactive FIBO AI Bot Companion */}
         <aside aria-label="FIBO Assistant" className="fixed bottom-6 right-6 z-40 hidden sm:flex items-end gap-3 pointer-events-auto">
           {showBotTip && (
             <div className="fibo-glass-nav rounded-2xl p-3.5 max-w-[230px] text-xs shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -142,7 +111,6 @@ export default function RootLayout({
             </div>
           )}
 
-          {/* ตัวหุ่นยนต์ SVG สามารถคลิกได้ (Interactive) */}
           <button
             type="button"
             onClick={handleBotInteract}
@@ -151,15 +119,11 @@ export default function RootLayout({
           >
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 p-2.5 shadow-2xl border border-slate-700/60 flex items-center justify-center">
               <svg viewBox="0 0 48 48" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
-                {/* เสาอากาศ */}
                 <circle cx="24" cy="7" r="3" fill="#EA580C" />
                 <line x1="24" y1="10" x2="24" y2="15" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" />
-                {/* โครงหน้า */}
                 <rect x="8" y="15" width="32" height="26" rx="8" fill="#1E293B" stroke="#475569" strokeWidth="2" />
-                {/* หน้าจอ Visor */}
                 <rect x="12" y="20" width="24" height="12" rx="4" fill="#0F172A" />
 
-                {/* ดวงตาเปลี่ยนตามโหมดอารมณ์ */}
                 {botMood === "happy" && (
                   <>
                     <path d="M16 26C16 23.5 19 23.5 19 26" stroke="#38BDF8" strokeWidth="2.5" strokeLinecap="round" />
@@ -180,11 +144,9 @@ export default function RootLayout({
                   </>
                 )}
 
-                {/* แถบยิ้ม */}
                 <path d="M20 36Q24 38 28 36" stroke="#EA580C" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </div>
-            {/* ไฟสถานะออนไลน์ */}
             <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white"></span>
@@ -192,14 +154,14 @@ export default function RootLayout({
           </button>
         </aside>
 
-        {/* Layout Structure */}
+        {/* โครงสร้าง Layout */}
         <div className="flex min-h-screen pb-24 lg:pb-0 fibo-cyber-grid">
           <UserNav />
           <div className="flex-1 overflow-x-hidden min-w-0">
             {children}
           </div>
 
-          {/* Floating Navigation Dock บนมือถือ */}
+          {/* Floating Navigation Dock สำหรับจอมือถือ */}
           <nav className="lg:hidden fixed bottom-3 inset-x-3 sm:inset-x-8 fibo-glass-nav rounded-2xl px-3 py-2 flex justify-around items-center z-40 transition-all">
             {navItems.map((item) => {
               const Icon = item.icon;
