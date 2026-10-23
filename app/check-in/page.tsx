@@ -13,7 +13,6 @@ import {
   Users,
   XCircle,
   AlertCircle,
-  ShieldCheck,
 } from "lucide-react";
 
 interface PendingBooking {
@@ -39,6 +38,7 @@ export default function CheckInPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+
   const fetchUserPendingBookings = async () => {
     try {
       const {
@@ -69,10 +69,9 @@ export default function CheckInPage() {
 
   useEffect(() => {
     fetchUserPendingBookings();
-    return () => stopCamera();
   }, []);
 
-  // ฟังก์ชันหยุดกล้องและยกเลิกลูปสแกน
+  // ฟังก์ชันหยุดการทำงานของกล้องและล้างค่า
   const stopCamera = () => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -85,81 +84,108 @@ export default function CheckInPage() {
     setScanningBooking(null);
   };
 
-  // ฟังก์ชันเปิดกล้องและเริ่มอ่าน QR Code จากภาพอัตโนมัติ
-  const startCamera = async (booking: PendingBooking) => {
-    setScanningBooking(booking);
-    setScanError("");
-    setManualPin("");
+  // เปิด-ปิดกล้องและลูปตรวจจับ QR Code ตามสถานะของ scanningBooking
+  useEffect(() => {
+    if (!scanningBooking) return;
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-      });
-      streamRef.current = stream;
+    let isSubscribed = true;
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute("playsinline", "true");
-        await videoRef.current.play();
+    const startCameraStream = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
 
-        // เริ่มลูปตรวจจับ QR Code จากวิดีโอ
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!isSubscribed) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
 
-        // ตรวจสอบว่าเบราว์เซอร์มี BarcodeDetector ในตัวหรือไม่
-        const hasBarcodeDetector = "BarcodeDetector" in window;
-        const detector = hasBarcodeDetector
-          ? new (window as any).BarcodeDetector({ formats: ["qr_code"] })
-          : null;
+        streamRef.current = stream;
 
-        const scanFrame = async () => {
-          if (!videoRef.current || videoRef.current.readyState < 2) {
-            animationFrameRef.current = requestAnimationFrame(scanFrame);
-            return;
-          }
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.setAttribute("playsinline", "true");
+          videoRef.current.muted = true;
+          await videoRef.current.play();
 
-          try {
-            let detectedText = "";
-
-            if (detector) {
-              const barcodes = await detector.detect(videoRef.current);
-              if (barcodes.length > 0) {
-                detectedText = barcodes[0].rawValue;
-              }
-            }
-
-            if (detectedText) {
-              const cleanedText = detectedText.trim().toUpperCase();
-              const targetRoom = booking.room_id.trim().toUpperCase();
-
-              // หากค่าที่สแกนได้ตรงกับรหัสห้อง (เช่น FB201, FB202)
-              if (cleanedText === targetRoom || cleanedText.includes(targetRoom)) {
-                stopCamera();
-                handleConfirmCheckIn(booking);
-                return;
-              } else {
-                setScanError(`QR Code ไม่ตรงกับห้อง ${booking.room_id} (ค่าที่อ่านได้: ${detectedText})`);
-              }
-            }
-          } catch (e) {
-            // ข้ามเฟรมที่มีปัญหาแล้วสแกนต่อ
-          }
-
-          animationFrameRef.current = requestAnimationFrame(scanFrame);
-        };
-
-        animationFrameRef.current = requestAnimationFrame(scanFrame);
+          // เริ่มตรวจจับ QR Code ทันทีที่ภาพขึ้น
+          startQrLoop(scanningBooking);
+        }
+      } catch (err: any) {
+        console.error("Camera access error:", err);
+        if (isSubscribed) {
+          setScanError("ไม่สามารถเปิดกล้องได้ กรุณาตรวจสอบการอนุญาตเข้าถึงกล้องในการตั้งค่าเบราว์เซอร์");
+        }
       }
-    } catch (err) {
-      setScanError("ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการเข้าถึงกล้อง");
-    }
+    };
+
+    startCameraStream();
+
+    return () => {
+      isSubscribed = false;
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, [scanningBooking]);
+
+  // ลูปตรวจจับ QR Code จากวิดีโอ
+  const startQrLoop = (booking: PendingBooking) => {
+    const hasDetector = "BarcodeDetector" in window;
+    const detector = hasDetector
+      ? new (window as any).BarcodeDetector({ formats: ["qr_code"] })
+      : null;
+
+    const scanFrame = async () => {
+      if (!videoRef.current || videoRef.current.readyState < 2) {
+        animationFrameRef.current = requestAnimationFrame(scanFrame);
+        return;
+      }
+
+      try {
+        if (detector) {
+          const barcodes = await detector.detect(videoRef.current);
+          if (barcodes.length > 0) {
+            const rawText = barcodes[0].rawValue.trim().toUpperCase();
+            const targetRoom = booking.room_id.trim().toUpperCase();
+
+            // เช็คว่า QR ตรงกับห้องหรือไม่ (รองรับทั้ง FB201, FIBO-ROOM-FB201 หรือมีชื่อห้องอยู่ข้างใน)
+            if (rawText === targetRoom || rawText.includes(targetRoom)) {
+              stopCamera();
+              handleConfirmCheckIn(booking);
+              return;
+            } else {
+              setScanError(`QR ไม่ตรงกับห้อง ${booking.room_id} (อ่านได้: ${rawText})`);
+            }
+          }
+        }
+      } catch (e) {
+        // ข้ามเฟรมที่มีปัญหา
+      }
+
+      animationFrameRef.current = requestAnimationFrame(scanFrame);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(scanFrame);
   };
+
+  // ยืนยัน Check-in ไปยัง Supabase
   const handleConfirmCheckIn = async (booking: PendingBooking) => {
     setIsProcessing(true);
     setScanError("");
 
     try {
-      // 1. อัปเดตสถานะการจองเป็น checked_in
       const { error: bookingErr } = await supabase
         .from("bookings")
         .update({
@@ -170,7 +196,6 @@ export default function CheckInPage() {
 
       if (bookingErr) throw bookingErr;
 
-      // 2. อัปเดตสถานะห้องในตาราง rooms เป็น in_use
       const { error: roomErr } = await supabase
         .from("rooms")
         .update({
@@ -293,9 +318,11 @@ export default function CheckInPage() {
                     </div>
                   </div>
 
-                  {/* เหลือเฉพาะปุ่มสแกน QR ของจริงเท่านั้น ไม่มีปุ่มจำลอง */}
                   <button
-                    onClick={() => startCamera(b)}
+                    onClick={() => {
+                      setScanError("");
+                      setScanningBooking(b);
+                    }}
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#EA580C] hover:bg-orange-700 text-white font-bold text-xs px-5 py-3 rounded-xl shadow-md shadow-orange-600/20 transition-all"
                   >
                     <Camera className="w-4 h-4" /> สแกน QR หน้าห้อง
@@ -307,7 +334,7 @@ export default function CheckInPage() {
         </div>
       </div>
 
-      {/* Modal กล้องสแกน QR Code */}
+      {/* Modal สแกนกล้อง (ไม่มีช่อง PIN ให้กวนใจ) */}
       {scanningBooking && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
@@ -334,7 +361,7 @@ export default function CheckInPage() {
                 muted
                 className="w-full h-full object-cover"
               />
-              <div className="absolute inset-8 border-2 border-orange-500/80 rounded-2xl pointer-events-none"></div>
+              <div className="absolute inset-8 border-2 border-orange-500/80 rounded-2xl pointer-events-none animate-pulse"></div>
             </div>
 
             {scanError && (
@@ -344,7 +371,18 @@ export default function CheckInPage() {
               </div>
             )}
 
+            {isProcessing && (
+              <p className="text-center text-xs font-bold text-orange-600">
+                กำลังยืนยันการเช็คอิน...
+              </p>
+            )}
 
+            <button
+              onClick={stopCamera}
+              className="w-full py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              ปิดหน้าต่าง
+            </button>
           </div>
         </div>
       )}

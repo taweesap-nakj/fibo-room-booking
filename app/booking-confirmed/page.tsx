@@ -99,15 +99,6 @@ export default function BookingConfirmedPage() {
                 {booking?.title || "การประชุมโปรเจกต์"}
               </p>
             </div>
-
-            <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 text-center min-w-[110px]">
-              <span className="text-[10px] font-bold text-orange-600 uppercase tracking-wider block">
-                รหัส PIN หน้าห้อง
-              </span>
-              <span className="text-2xl sm:text-3xl font-black text-orange-600 font-mono tracking-widest">
-                {roomName.replace(/\D/g, "") || "201"}
-              </span>
-            </div>
           </div>
 
           {/* Grid ข้อมูลเวลาจริง */}
