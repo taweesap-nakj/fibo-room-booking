@@ -33,13 +33,12 @@ export default function CheckInPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [scanningBooking, setScanningBooking] = useState<PendingBooking | null>(null);
   const [scanError, setScanError] = useState<string>("");
-  const [manualPin, setManualPin] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [successRoom, setSuccessRoom] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-
+  const animationFrameRef = useRef<number | null>(null);
   const fetchUserPendingBookings = async () => {
     try {
       const {
@@ -73,25 +72,12 @@ export default function CheckInPage() {
     return () => stopCamera();
   }, []);
 
-  const startCamera = async (booking: PendingBooking) => {
-    setScanningBooking(booking);
-    setScanError("");
-    setManualPin("");
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch (err) {
-      setScanError("ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการเข้าถึงกล้อง หรือกรอกรหัส PIN หน้าห้องแทน");
-    }
-  };
-
+  // ฟังก์ชันหยุดกล้องและยกเลิกลูปสแกน
   const stopCamera = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -99,6 +85,75 @@ export default function CheckInPage() {
     setScanningBooking(null);
   };
 
+  // ฟังก์ชันเปิดกล้องและเริ่มอ่าน QR Code จากภาพอัตโนมัติ
+  const startCamera = async (booking: PendingBooking) => {
+    setScanningBooking(booking);
+    setScanError("");
+    setManualPin("");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute("playsinline", "true");
+        await videoRef.current.play();
+
+        // เริ่มลูปตรวจจับ QR Code จากวิดีโอ
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+        // ตรวจสอบว่าเบราว์เซอร์มี BarcodeDetector ในตัวหรือไม่
+        const hasBarcodeDetector = "BarcodeDetector" in window;
+        const detector = hasBarcodeDetector
+          ? new (window as any).BarcodeDetector({ formats: ["qr_code"] })
+          : null;
+
+        const scanFrame = async () => {
+          if (!videoRef.current || videoRef.current.readyState < 2) {
+            animationFrameRef.current = requestAnimationFrame(scanFrame);
+            return;
+          }
+
+          try {
+            let detectedText = "";
+
+            if (detector) {
+              const barcodes = await detector.detect(videoRef.current);
+              if (barcodes.length > 0) {
+                detectedText = barcodes[0].rawValue;
+              }
+            }
+
+            if (detectedText) {
+              const cleanedText = detectedText.trim().toUpperCase();
+              const targetRoom = booking.room_id.trim().toUpperCase();
+
+              // หากค่าที่สแกนได้ตรงกับรหัสห้อง (เช่น FB201, FB202)
+              if (cleanedText === targetRoom || cleanedText.includes(targetRoom)) {
+                stopCamera();
+                handleConfirmCheckIn(booking);
+                return;
+              } else {
+                setScanError(`QR Code ไม่ตรงกับห้อง ${booking.room_id} (ค่าที่อ่านได้: ${detectedText})`);
+              }
+            }
+          } catch (e) {
+            // ข้ามเฟรมที่มีปัญหาแล้วสแกนต่อ
+          }
+
+          animationFrameRef.current = requestAnimationFrame(scanFrame);
+        };
+
+        animationFrameRef.current = requestAnimationFrame(scanFrame);
+      }
+    } catch (err) {
+      setScanError("ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการเข้าถึงกล้อง");
+    }
+  };
   const handleConfirmCheckIn = async (booking: PendingBooking) => {
     setIsProcessing(true);
     setScanError("");
@@ -133,25 +188,6 @@ export default function CheckInPage() {
       setScanError(err.message || "เกิดข้อผิดพลาดในการเช็คอิน");
     } finally {
       setIsProcessing(false);
-    }
-  };
-
-  const handleVerifyPinOrQr = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!scanningBooking) return;
-
-    const expectedPin = scanningBooking.room_id.replace(/\D/g, "");
-    const cleanInput = manualPin.trim().toUpperCase();
-
-    // รองรับทั้งรหัส PIN ห้อง (เช่น 201, 302) หรือข้อความจาก QR Code (FIBO-ROOM-FB201-...)
-    if (
-      cleanInput === expectedPin ||
-      cleanInput === scanningBooking.room_id.toUpperCase() ||
-      cleanInput.includes(`FIBO-ROOM-${scanningBooking.room_id.toUpperCase()}`)
-    ) {
-      handleConfirmCheckIn(scanningBooking);
-    } else {
-      setScanError("รหัสยืนยันไม่ตรงกับห้องที่จอง กรุณาตรวจสอบหน้าจอ Kiosk หน้าห้องอีกครั้ง");
     }
   };
 
@@ -308,27 +344,7 @@ export default function CheckInPage() {
               </div>
             )}
 
-            <form onSubmit={handleVerifyPinOrQr} className="space-y-2 pt-2 border-t border-slate-100">
-              <label className="block text-xs font-bold text-slate-700">
-                หรือกรอกรหัส PIN ที่ปรากฏบนจอหน้าห้อง:
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={manualPin}
-                  onChange={(e) => setManualPin(e.target.value)}
-                  placeholder="กรอกรหัสห้องเพื่อยืนยัน..."
-                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-900 outline-none focus:border-orange-500"
-                />
-                <button
-                  type="submit"
-                  disabled={isProcessing || !manualPin.trim()}
-                  className="bg-slate-900 hover:bg-orange-600 disabled:bg-slate-300 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5"
-                >
-                  <ShieldCheck className="w-4 h-4" /> ยืนยัน
-                </button>
-              </div>
-            </form>
+
           </div>
         </div>
       )}

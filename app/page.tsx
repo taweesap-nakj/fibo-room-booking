@@ -719,10 +719,10 @@ export default function Home() {
         </main>
       
 
-      {/* Modal จองห้อง */}
+{/* Modal จองห้อง */}
       {modalRoom && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
             <div className="flex items-start justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-xl font-black text-slate-900">
@@ -740,7 +740,7 @@ export default function Home() {
               </button>
             </div>
 
-            {/* แสดงคิวที่ถูกจองแล้วของห้องนี้ในวันที่เลือก (เชื่อมกับตาราง Schedule) */}
+            {/* แสดงคิวที่ถูกจองแล้วของห้องนี้ในวันที่เลือก */}
             <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2">
               <p className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-orange-600" />
@@ -789,11 +789,12 @@ export default function Home() {
                   min={todayStr}
                   max={tomorrowStr}
                   onChange={(e) => setFormDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none focus:border-orange-500"
+                  className="w-full max-w-full min-w-0 block appearance-none bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none focus:border-orange-500"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* ปรับเป็น 1 คอลัมน์บนมือถือ และ 2 คอลัมน์บนคอม */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     เวลาเริ่มต้น (ทุก 5 นาที)
@@ -832,7 +833,8 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* ปรับเป็น 1 คอลัมน์บนมือถือ และ 2 คอลัมน์บนคอม */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     จำนวนผู้เข้าใช้งาน (คน)

@@ -180,9 +180,7 @@ export default function KioskPage() {
 
     if (isNaN(startMs) || isNaN(endMs)) return false;
 
-    // เปิดให้เช็คอินล่วงหน้าได้ 15 นาทีก่อนเริ่ม จนกระทั่งถึงเวลาสิ้นสุด
-    const checkInWindowStart = startMs - 15 * 60 * 1000;
-    return nowMs >= checkInWindowStart && nowMs < endMs;
+    return nowMs >= startMs && nowMs < endMs;
   });
 
   const currentRoom = rooms.find((r) => r.id === selectedRoomId);
