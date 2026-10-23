@@ -27,11 +27,10 @@ import {
   Bot,
   Sparkles,
   Cpu,
-  Compass,
   ArrowRight,
 } from "lucide-react";
 
-// Component 3D Tilt Card สำหรับการ์ดห้องแบบ Liquid Glass
+// Component 3D Tilt Card: รัน 3D Perspective เฉพาะบนจอคอมพิวเตอร์ ส่วนบนมือถือจะใช้การ์ดกระจกน้ำหนักเบาไม่กินแรม
 function TiltRoomCard({
   children,
   className = "",
@@ -42,15 +41,21 @@ function TiltRoomCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const [tilt, setTilt] = useState({ x: 0, y: 0, glareX: 50, glareY: 50 });
   const [isHovered, setIsHovered] = useState(false);
+  const [isMobile, setIsMobile] = useState(true);
+
+  useEffect(() => {
+    // เช็คว่าอุปกรณ์รองรับ Hover ของเมาส์หรือไม่
+    const hasHover = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    setIsMobile(!hasHover);
+  }, []);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!cardRef.current) return;
+    if (isMobile || !cardRef.current) return;
     const rect = cardRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
-    // เอียง 3 มิติตามตำแหน่งเมาส์ สูงสุด 6 องศา
     const rotateX = ((y - centerY) / centerY) * -6;
     const rotateY = ((x - centerX) / centerX) * 6;
     setTilt({
@@ -62,6 +67,7 @@ function TiltRoomCard({
   };
 
   const handleMouseLeave = () => {
+    if (isMobile) return;
     setIsHovered(false);
     setTilt({ x: 0, y: 0, glareX: 50, glareY: 50 });
   };
@@ -69,19 +75,20 @@ function TiltRoomCard({
   return (
     <div
       ref={cardRef}
-      onMouseEnter={() => setIsHovered(true)}
+      onMouseEnter={() => !isMobile && setIsHovered(true)}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      style={{
-        transform: isHovered
-          ? `perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) translateY(-5px)`
-          : "perspective(1000px) rotateX(0deg) rotateY(0deg) translateY(0px)",
-        transition: isHovered ? "transform 0.08s ease-out" : "transform 0.45s ease-out",
-      }}
-      className={`relative transform-gpu will-change-transform ${className}`}
+      style={
+        !isMobile && isHovered
+          ? {
+              transform: `perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) translateY(-5px)`,
+              transition: "transform 0.08s ease-out",
+            }
+          : undefined
+      }
+      className={`relative ${!isMobile ? "transition-transform duration-300" : ""} ${className}`}
     >
-      {/* แสงเงากระจกสะท้อนตามปลายเมาส์ (Glare Specular) */}
-      {isHovered && (
+      {!isMobile && isHovered && (
         <div
           className="pointer-events-none absolute inset-0 rounded-3xl z-20 opacity-35 transition-opacity duration-200"
           style={{
@@ -110,16 +117,13 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [currentTime, setCurrentTime] = useState<string>("");
 
-  // Cyber Spotlight Mouse Position
   const [mousePos, setMousePos] = useState({ x: -100, y: -100 });
 
-  // ข้อมูลผู้ใช้และสิทธิ์ Admin
   const [userEmail, setUserEmail] = useState<string>("");
   const [userName, setUserName] = useState<string>("");
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
 
-  // Modal จองห้อง
   const [modalRoom, setModalRoom] = useState<Room | null>(null);
   const [formTitle, setFormTitle] = useState<string>("");
   const [formDate, setFormDate] = useState<string>(getLocalDateStr());
@@ -131,12 +135,9 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [timeOutAlertBooking, setTimeOutAlertBooking] = useState<any | null>(null);
 
-  // Modal AI Smart Match (ฟีเจอร์ที่ 4)
   const [showSmartMatchModal, setShowSmartMatchModal] = useState<boolean>(false);
   const [smartPeopleGroup, setSmartPeopleGroup] = useState<number>(4);
-  const [smartPurpose, setSmartPurpose] = useState<string>("Study / Project");
 
-  // Modal สร้างห้องใหม่ (เฉพาะ Admin)
   const [showAddRoomModal, setShowAddRoomModal] = useState<boolean>(false);
   const [newRoomId, setNewRoomId] = useState<string>("");
   const [newRoomFloor, setNewRoomFloor] = useState<number>(2);
@@ -151,7 +152,9 @@ export default function Home() {
     const handleGlobalMouseMove = (e: MouseEvent) => {
       setMousePos({ x: e.clientX, y: e.clientY });
     };
-    window.addEventListener("mousemove", handleGlobalMouseMove);
+    if (window.matchMedia("(min-width: 768px)").matches) {
+      window.addEventListener("mousemove", handleGlobalMouseMove);
+    }
     return () => window.removeEventListener("mousemove", handleGlobalMouseMove);
   }, []);
 
@@ -175,7 +178,6 @@ export default function Home() {
       setUserEmail(email);
       setUserName(fullName);
 
-      // ตรวจสอบสิทธิ์ Admin
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
@@ -188,7 +190,6 @@ export default function Home() {
         session.user.user_metadata?.role === "admin";
       setIsAdmin(adminCheck);
 
-      // 1. ดึงข้อมูลห้องทั้งหมด (กรองตัดทั้งห้อง SB- และ FIBO- ชุดเก่าออก)
       const { data: roomsData } = await supabase
         .from("rooms")
         .select("*")
@@ -212,7 +213,6 @@ export default function Home() {
         setRooms(cleanRooms);
       }
 
-      // 2. ดึงการจองทั้งหมดในระบบ
       const { data: allBookingsData } = await supabase
         .from("bookings")
         .select("*")
@@ -477,12 +477,10 @@ export default function Home() {
     }
   };
 
-  // อัลกอริทึม Smart Match แนะนำห้องที่ดีที่สุดตามจำนวนคน
   const getSmartRecommendedRoom = () => {
     const availableRooms = rooms.filter((r) => getRoomRealtimeStatus(r.id) === "available");
     if (availableRooms.length === 0) return null;
 
-    // หาห้องที่จุคนได้พอดีที่สุด (ไม่เลือกห้องใหญ่เกินจำเป็น)
     const fittingRooms = availableRooms.filter((r) => r.capacity >= smartPeopleGroup);
     if (fittingRooms.length > 0) {
       return fittingRooms.sort((a, b) => a.capacity - b.capacity)[0];
@@ -519,23 +517,23 @@ export default function Home() {
   const renderBadge = (status: "available" | "pending" | "in_use") => {
     if (status === "available") {
       return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-700 border border-emerald-500/20 backdrop-blur-md">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]"></span>
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
+          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
           Available
         </span>
       );
     }
     if (status === "pending") {
       return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-700 border border-amber-500/20 backdrop-blur-md">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-700 border border-amber-500/20">
           <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
           Pending
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-700 border border-rose-500/20 backdrop-blur-md">
-        <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.7)] animate-pulse"></span>
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-700 border border-rose-500/20">
+        <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
         In Use
       </span>
     );
@@ -543,8 +541,8 @@ export default function Home() {
 
   if (isAuthChecking) {
     return (
-      <div className="min-h-screen bg-transparent flex items-center justify-center text-xs font-bold text-slate-500">
-        <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/70 backdrop-blur-md border border-white/80 shadow-md">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-xs font-bold text-slate-500">
+        <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <Bot className="w-4 h-4 text-orange-500 animate-spin" />
           กำลังเชื่อมต่อระบบฐานข้อมูล FIBO...
         </div>
@@ -556,7 +554,7 @@ export default function Home() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-screen bg-transparent font-sans text-slate-900 relative">
-      {/* Cyber Spotlight ติดตามเคอร์เซอร์เมาส์บน Grid */}
+      {/* Spotlight เฉพาะบนหน้าจอคอม */}
       <div
         className="pointer-events-none fixed inset-0 z-30 transition-opacity duration-300 hidden md:block"
         style={{
@@ -565,7 +563,7 @@ export default function Home() {
       />
 
       {/* Top Navbar */}
-      <header className="bg-white/60 backdrop-blur-xl border-b border-white/80 px-6 py-3.5 flex items-center justify-between gap-4 sticky top-0 z-20 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.04)]">
+      <header className="bg-white/85 sm:bg-white/60 sm:backdrop-blur-xl border-b border-slate-200/80 sm:border-white/80 px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4 sticky top-0 z-20 shadow-xs">
         <div className="relative max-w-md w-full">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
@@ -573,47 +571,47 @@ export default function Home() {
             placeholder="ค้นหาห้อง เช่น FB201, Meeting..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white/70 backdrop-blur-md border border-slate-200/70 focus:border-orange-500/70 focus:bg-white rounded-2xl pl-10 pr-4 py-2 text-xs outline-none transition-all shadow-xs"
+            className="w-full bg-slate-50 sm:bg-white/70 border border-slate-200/70 focus:border-orange-500 focus:bg-white rounded-2xl pl-10 pr-4 py-2 text-xs outline-none transition-all shadow-xs"
           />
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* ปุ่ม AI Smart Match (ฟีเจอร์ที่ 4) */}
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => setShowSmartMatchModal(true)}
-            className="inline-flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-black px-4 py-2 rounded-2xl shadow-md shadow-orange-500/25 active:scale-95 transition-all"
+            className="inline-flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 text-white text-xs font-black px-3 sm:px-4 py-2 rounded-2xl shadow-sm active:scale-95 transition-all"
           >
-            <Sparkles className="w-3.5 h-3.5 text-white animate-spin" />
-            AI Smart Match
+            <Sparkles className="w-3.5 h-3.5 text-white" />
+            <span className="hidden sm:inline">AI Smart Match</span>
+            <span className="sm:hidden">AI Match</span>
           </button>
 
           {isAdmin && (
             <button
               onClick={() => setShowAddRoomModal(true)}
-              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-md shadow-emerald-600/20 active:scale-95 transition-all"
+              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm active:scale-95 transition-all"
             >
-              <Plus className="w-4 h-4" /> สร้างห้องใหม่
+              <Plus className="w-4 h-4" /> <span className="hidden sm:inline">สร้างห้องใหม่</span>
             </button>
           )}
 
-          <div className="hidden sm:flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 backdrop-blur-md px-3.5 py-1.5 rounded-xl text-xs font-bold text-orange-700 shadow-2xs">
-            <Clock className="w-3.5 h-3.5 text-orange-600 animate-pulse" />
+          <div className="hidden lg:flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 rounded-xl text-xs font-bold text-orange-700">
+            <Clock className="w-3.5 h-3.5 text-orange-600" />
             โควตาคงเหลือ: {remainingQuota}/4 ชม.
           </div>
 
-          <div className="text-right hidden md:block">
-            <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">REALTIME 24H</span>
-            <span className="text-xs font-black font-mono text-slate-800 bg-white/60 px-2 py-0.5 rounded-md border border-white">
+          <div className="text-right hidden xl:block">
+            <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">REALTIME</span>
+            <span className="text-xs font-black font-mono text-slate-800 bg-white/60 px-2 py-0.5 rounded-md border border-slate-100 notranslate">
               {currentTime || "--:--:--"}
             </span>
           </div>
 
-          <div className="flex items-center gap-2.5 pl-2 border-l border-slate-200/70">
-            <div className="text-right">
+          <div className="flex items-center gap-2 pl-2 border-l border-slate-200/70">
+            <div className="text-right hidden sm:block">
               <p className="text-xs font-black text-slate-800 uppercase flex items-center gap-1 justify-end">
                 {userName}
                 {isAdmin && (
-                  <span className="text-[9px] bg-gradient-to-r from-orange-600 to-amber-600 text-white font-bold px-1.5 py-0.2 rounded-md shadow-2xs">
+                  <span className="text-[9px] bg-orange-600 text-white font-bold px-1.5 py-0.2 rounded-md">
                     ADMIN
                   </span>
                 )}
@@ -623,7 +621,7 @@ export default function Home() {
             <button
               onClick={handleLogout}
               title="ออกจากระบบ"
-              className="p-2 rounded-xl border border-slate-200/80 bg-white/60 text-slate-500 hover:text-rose-600 hover:bg-rose-50/80 transition-all hover:scale-105"
+              className="p-2 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-rose-600 transition-all"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -632,21 +630,19 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="p-6 space-y-6 max-w-7xl w-full mx-auto relative z-10">
-        {/* Banner: Futuristic Glass Cyber Sheen */}
-        <div className="relative overflow-hidden rounded-3xl p-6 sm:p-8 text-white bg-gradient-to-r from-slate-950 via-slate-900 to-orange-950 border border-white/10 shadow-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 group">
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 pointer-events-none" />
-
+      <main className="p-4 sm:p-6 space-y-6 max-w-7xl w-full mx-auto relative z-10">
+        {/* Banner */}
+        <div className="relative overflow-hidden rounded-3xl p-6 sm:p-8 text-white bg-gradient-to-r from-slate-950 via-slate-900 to-orange-950 border border-white/10 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
           <div className="space-y-2 relative z-10">
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider bg-orange-500/20 text-orange-400 border border-orange-500/30 px-3 py-1 rounded-full backdrop-blur-md">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider bg-orange-500/20 text-orange-400 border border-orange-500/30 px-3 py-1 rounded-full">
                 <Cpu className="w-3 h-3 text-orange-400" /> FIBO ROBOTICS & SMART INFRASTRUCTURE
               </span>
               <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-mono">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" /> LIVE DB
               </span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white drop-shadow-sm">
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
               Find Your Space at FIBO
             </h2>
             <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
@@ -656,56 +652,56 @@ export default function Home() {
 
           <Link
             href="/schedule"
-            className="relative z-10 bg-white/95 hover:bg-white text-slate-900 hover:text-orange-600 font-bold text-xs px-5 py-3 rounded-2xl shadow-lg border border-white/60 transition-all duration-300 shrink-0 flex items-center gap-2 hover:scale-105 active:scale-95"
+            className="relative z-10 bg-white hover:bg-orange-50 text-slate-900 hover:text-orange-600 font-bold text-xs px-5 py-3 rounded-2xl shadow-md border border-white/60 transition-all shrink-0 flex items-center gap-2"
           >
             <Calendar className="w-4 h-4 text-orange-600" /> ตารางรวม (Timeline)
           </Link>
         </div>
 
-        {/* 4 Cards: Liquid Glass Metrics */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white/65 backdrop-blur-xl rounded-3xl p-5 border border-white/90 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_12px_36px_rgba(249,115,22,0.12)] hover:-translate-y-1 transition-all duration-300 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500/15 to-orange-600/5 text-orange-600 border border-orange-500/20 flex items-center justify-center shadow-xs">
-              <Layers className="w-6 h-6" />
+        {/* 4 Cards Metrics */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="bg-white/85 sm:bg-white/70 sm:backdrop-blur-xl rounded-3xl p-4 sm:p-5 border border-white/90 shadow-sm flex items-center gap-3 sm:gap-4">
+            <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-orange-500/10 text-orange-600 border border-orange-500/20 flex items-center justify-center shrink-0">
+              <Layers className="w-5 sm:w-6 h-5 sm:h-6" />
             </div>
             <div>
-              <p className="text-2xl font-black text-slate-900 tracking-tight">{totalRoomsCount}</p>
-              <p className="text-xs text-slate-500 font-semibold">Total Rooms</p>
+              <p className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">{totalRoomsCount}</p>
+              <p className="text-[11px] sm:text-xs text-slate-500 font-semibold">Total Rooms</p>
             </div>
           </div>
 
-          <div className="bg-white/65 backdrop-blur-xl rounded-3xl p-5 border border-white/90 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_12px_36px_rgba(16,185,129,0.12)] hover:-translate-y-1 transition-all duration-300 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/15 to-emerald-600/5 text-emerald-600 border border-emerald-500/20 flex items-center justify-center shadow-xs">
-              <span className="w-4 h-4 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]" />
+          <div className="bg-white/85 sm:bg-white/70 sm:backdrop-blur-xl rounded-3xl p-4 sm:p-5 border border-white/90 shadow-sm flex items-center gap-3 sm:gap-4">
+            <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center shrink-0">
+              <span className="w-3.5 sm:w-4 h-3.5 sm:h-4 rounded-full bg-emerald-500" />
             </div>
             <div>
-              <p className="text-2xl font-black text-emerald-600 tracking-tight">{availableCount}</p>
-              <p className="text-xs text-slate-500 font-semibold">Available Now</p>
+              <p className="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight">{availableCount}</p>
+              <p className="text-[11px] sm:text-xs text-slate-500 font-semibold">Available Now</p>
             </div>
           </div>
 
-          <div className="bg-white/65 backdrop-blur-xl rounded-3xl p-5 border border-white/90 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_12px_36px_rgba(245,158,11,0.12)] hover:-translate-y-1 transition-all duration-300 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500/15 to-amber-600/5 text-amber-600 border border-amber-500/20 flex items-center justify-center shadow-xs">
-              <span className="w-4 h-4 rounded-full bg-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.8)] animate-pulse" />
+          <div className="bg-white/85 sm:bg-white/70 sm:backdrop-blur-xl rounded-3xl p-4 sm:p-5 border border-white/90 shadow-sm flex items-center gap-3 sm:gap-4">
+            <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center shrink-0">
+              <span className="w-3.5 sm:w-4 h-3.5 sm:h-4 rounded-full bg-amber-500 animate-pulse" />
             </div>
             <div>
-              <p className="text-2xl font-black text-amber-600 tracking-tight">{pendingCount}</p>
-              <p className="text-xs text-slate-500 font-semibold">Pending Check-in</p>
+              <p className="text-xl sm:text-2xl font-black text-amber-600 tracking-tight">{pendingCount}</p>
+              <p className="text-[11px] sm:text-xs text-slate-500 font-semibold">Pending Check-in</p>
             </div>
           </div>
 
-          <div className="bg-white/65 backdrop-blur-xl rounded-3xl p-5 border border-white/90 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_12px_36px_rgba(244,63,94,0.12)] hover:-translate-y-1 transition-all duration-300 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500/15 to-rose-600/5 text-rose-600 border border-rose-500/20 flex items-center justify-center shadow-xs">
-              <span className="w-4 h-4 rounded-full bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.8)] animate-pulse" />
+          <div className="bg-white/85 sm:bg-white/70 sm:backdrop-blur-xl rounded-3xl p-4 sm:p-5 border border-white/90 shadow-sm flex items-center gap-3 sm:gap-4">
+            <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-rose-500/10 text-rose-600 border border-rose-500/20 flex items-center justify-center shrink-0">
+              <span className="w-3.5 sm:w-4 h-3.5 sm:h-4 rounded-full bg-rose-500 animate-pulse" />
             </div>
             <div>
-              <p className="text-2xl font-black text-rose-600 tracking-tight">{inUseCount}</p>
-              <p className="text-xs text-slate-500 font-semibold">Occupied (In Use)</p>
+              <p className="text-xl sm:text-2xl font-black text-rose-600 tracking-tight">{inUseCount}</p>
+              <p className="text-[11px] sm:text-xs text-slate-500 font-semibold">Occupied (In Use)</p>
             </div>
           </div>
         </div>
 
-        {/* 2 Columns Section */}
+        {/* 2 Columns */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Left: Rooms List */}
           <div className="lg:col-span-2 space-y-4">
@@ -715,10 +711,10 @@ export default function Home() {
                 <button
                   key={fl}
                   onClick={() => setSelectedFloor(fl)}
-                  className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all duration-300 ${
+                  className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all ${
                     selectedFloor === fl
-                      ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-md shadow-orange-500/25 scale-105 border border-orange-400"
-                      : "bg-white/65 backdrop-blur-md text-slate-600 border border-white/80 hover:bg-white hover:border-orange-200"
+                      ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-md border border-orange-400"
+                      : "bg-white/80 text-slate-600 border border-white/80 hover:bg-white"
                   }`}
                 >
                   {fl === "All" ? "All Floors" : `Floor ${fl}`}
@@ -726,7 +722,7 @@ export default function Home() {
               ))}
             </div>
 
-            {/* Room Cards: 3D Tilt + Holographic Glass Card (ลูกเล่นที่ 1) */}
+            {/* Room Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {visibleRooms.map((room) => {
                 const realtimeStatus = getRoomRealtimeStatus(room.id);
@@ -741,7 +737,7 @@ export default function Home() {
                 return (
                   <TiltRoomCard
                     key={room.id}
-                    className={`bg-white/70 backdrop-blur-xl rounded-3xl p-5 border border-white/90 shadow-[0_8px_32px_0_rgba(15,23,42,0.05)] flex flex-col justify-between space-y-4 group overflow-hidden ${
+                    className={`bg-white/90 sm:bg-white/70 sm:backdrop-blur-xl rounded-3xl p-5 border border-white/90 shadow-sm flex flex-col justify-between space-y-4 group overflow-hidden ${
                       isRoomAvailable ? "holo-card-available" : ""
                     }`}
                   >
@@ -761,7 +757,7 @@ export default function Home() {
                       </p>
                     </div>
 
-                    <div className="space-y-3 pt-3 border-t border-slate-200/50 relative z-10">
+                    <div className="space-y-3 pt-3 border-t border-slate-100 relative z-10">
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-slate-400 font-medium">คิวจองวันนี้</span>
                         <span className="font-bold text-slate-700 bg-slate-100/80 px-2 py-0.5 rounded-lg border border-slate-200/50">
@@ -787,7 +783,7 @@ export default function Home() {
           {/* Right Column: Quota & Active Pass */}
           <div className="space-y-4">
             {/* Daily Quota Card */}
-            <div className="bg-white/70 backdrop-blur-xl rounded-3xl p-5 border border-white/90 space-y-3.5 shadow-[0_8px_32px_0_rgba(15,23,42,0.05)]">
+            <div className="bg-white/90 sm:bg-white/70 sm:backdrop-blur-xl rounded-3xl p-5 border border-white/90 space-y-3.5 shadow-sm">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-orange-500" /> DAILY QUOTA
@@ -797,9 +793,9 @@ export default function Home() {
                 </span>
               </div>
 
-              <div className="w-full h-3 bg-slate-100/90 rounded-full overflow-hidden p-0.5 border border-slate-200/60">
+              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden p-0.5 border border-slate-200/60">
                 <div
-                  className="h-full bg-gradient-to-r from-orange-500 to-amber-500 rounded-full transition-all duration-500 shadow-xs"
+                  className="h-full bg-gradient-to-r from-orange-500 to-amber-500 rounded-full transition-all duration-500"
                   style={{ width: `${Math.min(100, (usedHoursToday / 4) * 100)}%` }}
                 />
               </div>
@@ -812,7 +808,7 @@ export default function Home() {
             </div>
 
             {/* Active Pass Card */}
-            <div className="bg-white/70 backdrop-blur-xl rounded-3xl p-5 border border-white/90 space-y-4 shadow-[0_8px_32px_0_rgba(15,23,42,0.05)]">
+            <div className="bg-white/90 sm:bg-white/70 sm:backdrop-blur-xl rounded-3xl p-5 border border-white/90 space-y-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black uppercase text-slate-700 tracking-wider">
                   ACTIVE PASS (1 USER / 1 ROOM)
@@ -827,7 +823,7 @@ export default function Home() {
 
               {myActiveBookings.length === 0 ? (
                 <div className="py-8 text-center space-y-2">
-                  <div className="w-10 h-10 rounded-full bg-slate-100/80 text-slate-400 flex items-center justify-center mx-auto">
+                  <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
                     <Building2 className="w-5 h-5" />
                   </div>
                   <p className="text-xs text-slate-400 font-medium">
@@ -838,7 +834,7 @@ export default function Home() {
                 myActiveBookings.map((b) => (
                   <div
                     key={b.id}
-                    className="p-4 rounded-2xl border border-white/80 bg-white/60 backdrop-blur-md space-y-3 shadow-xs"
+                    className="p-4 rounded-2xl border border-slate-200/80 bg-white/60 space-y-3 shadow-xs"
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-lg font-black text-slate-900 tracking-tight">
@@ -863,7 +859,7 @@ export default function Home() {
                     {b.status === "pending" ? (
                       <Link
                         href="/check-in"
-                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-orange-500/20 active:scale-95 transition-all"
+                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
                       >
                         <KeyRound className="w-3.5 h-3.5" /> ไปหน้าสแกน Check-In
                       </Link>
@@ -883,10 +879,10 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Modal: AI Smart Match Room (ลูกเล่นที่ 4) */}
+      {/* Modal: AI Smart Match Room */}
       {showSmartMatchModal && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white/95 backdrop-blur-2xl rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl border border-white/90">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl border border-slate-100">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-xs">
@@ -905,7 +901,6 @@ export default function Home() {
               </button>
             </div>
 
-            {/* เลือกจำนวนคน */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                 <span>จำนวนผู้ใช้งาน</span>
@@ -929,11 +924,10 @@ export default function Home() {
               </div>
             </div>
 
-            {/* การ์ดผลลัพธ์ห้องที่ AI แนะนำ */}
             {smartRoom ? (
-              <div className="bg-gradient-to-br from-orange-50/80 via-white to-amber-50/80 border border-orange-200 rounded-2xl p-4 space-y-3 shadow-xs">
+              <div className="bg-gradient-to-br from-orange-50 via-white to-amber-50 border border-orange-200 rounded-2xl p-4 space-y-3 shadow-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase text-orange-600 bg-orange-100/80 px-2.5 py-0.5 rounded-full border border-orange-200 flex items-center gap-1">
+                  <span className="text-[10px] font-black uppercase text-orange-600 bg-orange-100 px-2.5 py-0.5 rounded-full border border-orange-200 flex items-center gap-1">
                     <Sparkles className="w-3 h-3" /> BEST MATCH
                   </span>
                   <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
@@ -948,7 +942,7 @@ export default function Home() {
                   </p>
                 </div>
 
-                <div className="text-[11px] text-slate-600 space-y-1 bg-white/70 rounded-xl p-2.5 border border-orange-100 font-medium">
+                <div className="text-[11px] text-slate-600 space-y-1 bg-white/80 rounded-xl p-2.5 border border-orange-100 font-medium">
                   <p className="text-emerald-700 font-bold">✓ ขนาดห้องพอดีกับ {smartPeopleGroup} คน ไม่เปลืองพลังงาน</p>
                   <p>✓ สถานะปัจจุบันว่าง พร้อมใช้งานได้ทันที</p>
                 </div>
@@ -958,7 +952,7 @@ export default function Home() {
                     setShowSmartMatchModal(false);
                     handleOpenModal(smartRoom);
                   }}
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white text-xs font-black shadow-md shadow-orange-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 text-white text-xs font-black shadow-md shadow-orange-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5"
                 >
                   เลือกจองห้อง {smartRoom.id} ทันที <ArrowRight className="w-4 h-4" />
                 </button>
@@ -974,9 +968,9 @@ export default function Home() {
 
       {/* Modal จองห้อง */}
       {modalRoom && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)] border border-white/90 max-h-[90vh] overflow-y-auto overflow-x-hidden">
-            <div className="flex items-start justify-between border-b border-slate-200/60 pb-3">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto overflow-x-hidden">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-xl font-black text-slate-900">
                   จองห้อง {modalRoom.id}
@@ -987,14 +981,13 @@ export default function Home() {
               </div>
               <button
                 onClick={() => setModalRoom(null)}
-                className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100/80 transition-colors"
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* แสดงคิวที่ถูกจองแล้ว */}
-            <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3.5 space-y-2">
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2">
               <p className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-orange-600" />
                 ช่วงเวลาที่มีผู้จองแล้วในวันที่ {formDate}:
@@ -1028,7 +1021,7 @@ export default function Home() {
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
                   placeholder="ระบุวัตถุประสงค์ เช่น พัฒนาหุ่นยนต์, ประชุมโปรเจกต์..."
-                  className="w-full bg-white/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium outline-none focus:border-orange-500 focus:bg-white transition-all"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium outline-none focus:border-orange-500 focus:bg-white transition-all"
                 />
               </div>
 
@@ -1042,12 +1035,12 @@ export default function Home() {
                   min={todayStr}
                   max={tomorrowStr}
                   onChange={(e) => setFormDate(e.target.value)}
-                  className="w-full max-w-full min-w-0 block appearance-none bg-white/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none focus:border-orange-500 focus:bg-white transition-all"
+                  className="w-full max-w-full min-w-0 block appearance-none bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none focus:border-orange-500 focus:bg-white transition-all"
                 />
               </div>
 
-              {/* Modern Time Picker Component */}
-              <div className="space-y-3 bg-slate-50/90 border border-slate-200/90 rounded-2xl p-4">
+              {/* Time Picker */}
+              <div className="space-y-3 bg-slate-50 border border-slate-200 rounded-2xl p-4">
                 <div className="text-center space-y-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     SET YOUR TIME
@@ -1055,7 +1048,6 @@ export default function Home() {
                   <p className="text-xs text-slate-500">เลือกช่วงเวลาเริ่มต้นและสิ้นสุดการใช้งานห้อง</p>
                 </div>
 
-                {/* แถบแสดงเวลา Start -> End */}
                 <div className="flex items-center justify-center gap-3 py-1">
                   <button
                     type="button"
@@ -1063,7 +1055,7 @@ export default function Home() {
                     className={`text-center px-4 py-2 rounded-2xl transition-all ${
                       activeTimePicker === "start"
                         ? "bg-white shadow-md border-2 border-orange-500 scale-105"
-                        : "bg-slate-100/80 border border-slate-200 hover:bg-white"
+                        : "bg-slate-100 border border-slate-200 hover:bg-white"
                     }`}
                   >
                     <span className="block text-[10px] font-bold text-slate-400 uppercase">Start</span>
@@ -1080,7 +1072,7 @@ export default function Home() {
                     className={`text-center px-4 py-2 rounded-2xl transition-all ${
                       activeTimePicker === "end"
                         ? "bg-white shadow-md border-2 border-sky-500 scale-105"
-                        : "bg-slate-100/80 border border-slate-200 hover:bg-white"
+                        : "bg-slate-100 border border-slate-200 hover:bg-white"
                     }`}
                   >
                     <span className="block text-[10px] font-bold text-slate-400 uppercase">End</span>
@@ -1090,15 +1082,13 @@ export default function Home() {
                   </button>
                 </div>
 
-                {/* ป้ายคำนวณระยะเวลาจองรอบนี้ */}
                 <div className="text-center">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-orange-100/80 text-orange-800 border border-orange-200">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200">
                     <Clock className="w-3.5 h-3.5 text-orange-600" />
                     ระยะเวลาใช้งาน: {getBookingDurationHours()} ชั่วโมง
                   </span>
                 </div>
 
-                {/* คอลัมน์เลื่อนเลือก ชั่วโมง (HH) และ นาที (MM) */}
                 <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-inner">
                   <div className="grid grid-cols-2 gap-2 text-center text-[10px] font-black text-slate-400 border-b border-slate-100 pb-1.5 mb-1.5">
                     <span>HOURS</span>
@@ -1106,7 +1096,6 @@ export default function Home() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 h-36">
-                    {/* คอลัมน์ชั่วโมง 00 - 23 */}
                     <div className="overflow-y-auto space-y-1 pr-1 scrollbar-thin">
                       {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map((hour) => {
                         const currentVal = activeTimePicker === "start" ? formStart : formEnd;
@@ -1130,7 +1119,7 @@ export default function Home() {
                             }}
                             className={`w-full py-1.5 text-xs font-bold rounded-lg transition-all ${
                               isPastHour
-                                ? "text-slate-300 line-through cursor-not-allowed bg-slate-50/50"
+                                ? "text-slate-300 line-through cursor-not-allowed bg-slate-50"
                                 : isSelected
                                 ? activeTimePicker === "start"
                                   ? "bg-orange-500 text-white shadow-sm"
@@ -1144,7 +1133,6 @@ export default function Home() {
                       })}
                     </div>
 
-                    {/* คอลัมน์นาที 00 - 55 */}
                     <div className="overflow-y-auto space-y-1 pr-1 scrollbar-thin">
                       {["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"].map((minute) => {
                         const currentVal = activeTimePicker === "start" ? formStart : formEnd;
@@ -1168,7 +1156,7 @@ export default function Home() {
                             }}
                             className={`w-full py-1.5 text-xs font-bold rounded-lg transition-all ${
                               isDisabled
-                                ? "text-slate-300 line-through cursor-not-allowed bg-slate-50/50"
+                                ? "text-slate-300 line-through cursor-not-allowed bg-slate-50"
                                 : isSelected
                                 ? activeTimePicker === "start"
                                   ? "bg-orange-500 text-white shadow-sm"
@@ -1185,7 +1173,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* ผู้เข้าใช้งาน และ ชื่อผู้จอง */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -1197,7 +1184,7 @@ export default function Home() {
                     max={modalRoom.capacity}
                     value={formPeople}
                     onChange={(e) => setFormPeople(Number(e.target.value))}
-                    className="w-full bg-white/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none focus:border-orange-500 transition-all"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none focus:border-orange-500 transition-all"
                   />
                 </div>
 
@@ -1209,12 +1196,12 @@ export default function Home() {
                     type="text"
                     value={formName}
                     readOnly
-                    className="w-full bg-slate-100/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-600 cursor-not-allowed"
+                    className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-600 cursor-not-allowed"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200/60">
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setModalRoom(null)}
@@ -1225,7 +1212,7 @@ export default function Home() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:bg-slate-300 text-white text-xs font-bold shadow-md shadow-orange-600/20 active:scale-95 transition-all"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 disabled:bg-slate-300 text-white text-xs font-bold shadow-md shadow-orange-600/20 active:scale-95 transition-all"
                 >
                   {isSubmitting ? "กำลังบันทึก..." : "ยืนยันการจอง"}
                 </button>
@@ -1235,11 +1222,11 @@ export default function Home() {
         </div>
       )}
 
-      {/* Modal สร้างห้องใหม่สำหรับ Admin */}
+      {/* Modal สร้างห้องใหม่ Admin */}
       {showAddRoomModal && isAdmin && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-white/90">
-            <div className="flex items-center justify-between border-b border-slate-200/60 pb-3">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <span className="text-[10px] font-bold uppercase text-emerald-600">
                   ADMIN MANAGEMENT
@@ -1250,7 +1237,7 @@ export default function Home() {
               </div>
               <button
                 onClick={() => setShowAddRoomModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                className="p-1 text-slate-400 hover:text-slate-600"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1267,7 +1254,7 @@ export default function Home() {
                   value={newRoomId}
                   onChange={(e) => setNewRoomId(e.target.value)}
                   placeholder="FB..."
-                  className="w-full bg-white/70 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold uppercase outline-none focus:border-emerald-500 transition-all"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold uppercase outline-none focus:border-emerald-500"
                 />
               </div>
 
@@ -1279,7 +1266,7 @@ export default function Home() {
                   <select
                     value={newRoomFloor}
                     onChange={(e) => setNewRoomFloor(Number(e.target.value))}
-                    className="w-full bg-white/70 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
                   >
                     {[2, 3, 4, 5, 6].map((fl) => (
                       <option key={fl} value={fl}>
@@ -1299,7 +1286,7 @@ export default function Home() {
                     max={200}
                     value={newRoomCapacity}
                     onChange={(e) => setNewRoomCapacity(Number(e.target.value))}
-                    className="w-full bg-white/70 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold outline-none"
                   />
                 </div>
               </div>
@@ -1311,7 +1298,7 @@ export default function Home() {
                 <select
                   value={newRoomType}
                   onChange={(e) => setNewRoomType(e.target.value)}
-                  className="w-full bg-white/70 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
                 >
                   <option value="Lecture Room">Lecture Room</option>
                   <option value="Meeting Room">Meeting Room</option>
@@ -1320,18 +1307,18 @@ export default function Home() {
                 </select>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200/60">
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowAddRoomModal(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
                   disabled={isCreatingRoom}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 active:scale-95 transition-all"
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md active:scale-95 transition-all"
                 >
                   {isCreatingRoom ? "กำลังสร้าง..." : "บันทึกห้องใหม่"}
                 </button>
@@ -1343,8 +1330,8 @@ export default function Home() {
 
       {/* Modal แจ้งเตือนหมดเวลาใช้งาน */}
       {timeOutAlertBooking && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white/95 backdrop-blur-2xl rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-white/90">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-slate-100">
             <div className="w-16 h-16 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto border border-rose-500/20">
               <Clock className="w-8 h-8 animate-bounce" />
             </div>
@@ -1361,21 +1348,7 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="bg-slate-50/80 rounded-2xl p-3 text-[11px] text-slate-600 text-left space-y-1 border border-slate-100">
+            <div className="bg-slate-50 rounded-2xl p-3 text-[11px] text-slate-600 text-left space-y-1 border border-slate-100">
               <p>• กรุณาตรวจสอบสัมภาระส่วนตัว</p>
               <p>• ปิดเครื่องปรับอากาศและไฟก่อนออกจากห้อง</p>
               <p>• ส่งมอบห้องให้แก่ผู้เข้าใช้งานคิวถัดไป</p>
-            </div>
-
-            <button
-              onClick={() => setTimeOutAlertBooking(null)}
-              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-orange-600 text-white text-xs font-bold transition-all shadow-md active:scale-95"
-            >
-              รับทราบ
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}

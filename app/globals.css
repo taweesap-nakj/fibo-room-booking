@@ -209,48 +209,51 @@ body {
   background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
 }
 
-@keyframes ambientFloat {
-  0%, 100% { transform: translate(0px, 0px) scale(1); }
-  50% { transform: translate(30px, -20px) scale(1.08); }
-}
-
-.animate-ambient-pulse {
-  animation: ambientFloat 14s infinite ease-in-out alternate;
+/* รัน Ambient Animation เบาๆ เฉพาะบนคอมเพื่อประหยัดแรมมือถือ */
+@media (min-width: 768px) {
+  @keyframes ambientFloat {
+    0%, 100% { transform: translate(0px, 0px) scale(1); }
+    50% { transform: translate(30px, -20px) scale(1.08); }
+  }
+  .animate-ambient-pulse {
+    animation: ambientFloat 14s infinite ease-in-out alternate;
+  }
 }
 
 .fibo-glass-nav {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 12px 36px -6px rgba(15, 23, 42, 0.12),
-              inset 0 1px 2px 0 rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.1);
 }
 
 .holo-card-available {
   position: relative;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.holo-card-available::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  border-radius: 26px;
-  background: linear-gradient(
-    135deg,
-    rgba(16, 185, 129, 0.25),
-    rgba(249, 115, 22, 0.2)
-  );
-  z-index: -1;
-  opacity: 0;
-  filter: blur(8px);
-  transition: opacity 0.4s ease, filter 0.4s ease;
-}
+/* แสดงแสงเรืองนุ่มนวลเฉพาะบนคอมที่มีเมาส์ชี้ (Hover) */
+@media (hover: hover) and (pointer: fine) {
+  .holo-card-available::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: 26px;
+    background: linear-gradient(
+      135deg,
+      rgba(16, 185, 129, 0.25),
+      rgba(249, 115, 22, 0.2)
+    );
+    z-index: -1;
+    opacity: 0;
+    filter: blur(8px);
+    transition: opacity 0.4s ease, filter 0.4s ease;
+  }
 
-.holo-card-available:hover::before {
-  opacity: 0.65;
-  filter: blur(10px);
+  .holo-card-available:hover::before {
+    opacity: 0.65;
+    filter: blur(10px);
+  }
 }
 
 @keyframes botJump {
