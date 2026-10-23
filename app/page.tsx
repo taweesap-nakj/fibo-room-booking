@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ROOMS_DATA as INITIAL_ROOMS, Room } from "./data";
@@ -10,96 +10,19 @@ import {
   Building2,
   Search,
   Calendar,
-  BookOpen,
   KeyRound,
-  Bell,
   Users,
   Zap,
   Layers,
-  CheckCircle2,
   Clock,
-  AlertCircle,
   X,
   Plus,
   LogOut,
-  Monitor,
-  ShieldAlert,
   Bot,
   Sparkles,
   Cpu,
   ArrowRight,
 } from "lucide-react";
-
-// Component 3D Tilt Card: รัน 3D Perspective เฉพาะบนจอคอมพิวเตอร์ ส่วนบนมือถือจะใช้การ์ดกระจกน้ำหนักเบาไม่กินแรม
-function TiltRoomCard({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [tilt, setTilt] = useState({ x: 0, y: 0, glareX: 50, glareY: 50 });
-  const [isHovered, setIsHovered] = useState(false);
-  const [isMobile, setIsMobile] = useState(true);
-
-  useEffect(() => {
-    // เช็คว่าอุปกรณ์รองรับ Hover ของเมาส์หรือไม่
-    const hasHover = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-    setIsMobile(!hasHover);
-  }, []);
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (isMobile || !cardRef.current) return;
-    const rect = cardRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const centerX = rect.width / 2;
-    const centerY = rect.height / 2;
-    const rotateX = ((y - centerY) / centerY) * -6;
-    const rotateY = ((x - centerX) / centerX) * 6;
-    setTilt({
-      x: rotateX,
-      y: rotateY,
-      glareX: (x / rect.width) * 100,
-      glareY: (y / rect.height) * 100,
-    });
-  };
-
-  const handleMouseLeave = () => {
-    if (isMobile) return;
-    setIsHovered(false);
-    setTilt({ x: 0, y: 0, glareX: 50, glareY: 50 });
-  };
-
-  return (
-    <div
-      ref={cardRef}
-      onMouseEnter={() => !isMobile && setIsHovered(true)}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      style={
-        !isMobile && isHovered
-          ? {
-              transform: `perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) translateY(-5px)`,
-              transition: "transform 0.08s ease-out",
-            }
-          : undefined
-      }
-      className={`relative ${!isMobile ? "transition-transform duration-300" : ""} ${className}`}
-    >
-      {!isMobile && isHovered && (
-        <div
-          className="pointer-events-none absolute inset-0 rounded-3xl z-20 opacity-35 transition-opacity duration-200"
-          style={{
-            background: `radial-gradient(circle at ${tilt.glareX}% ${tilt.glareY}%, rgba(255,255,255,0.9), transparent 60%)`,
-          }}
-        />
-      )}
-      {children}
-    </div>
-  );
-}
 
 const getLocalDateStr = (d = new Date()) => {
   const y = d.getFullYear();
@@ -116,8 +39,6 @@ export default function Home() {
   const [selectedFloor, setSelectedFloor] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [currentTime, setCurrentTime] = useState<string>("");
-
-  const [mousePos, setMousePos] = useState({ x: -100, y: -100 });
 
   const [userEmail, setUserEmail] = useState<string>("");
   const [userName, setUserName] = useState<string>("");
@@ -147,16 +68,6 @@ export default function Home() {
 
   const todayStr = getLocalDateStr();
   const tomorrowStr = getLocalDateStr(new Date(Date.now() + 86400000));
-
-  useEffect(() => {
-    const handleGlobalMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
-    };
-    if (window.matchMedia("(min-width: 768px)").matches) {
-      window.addEventListener("mousemove", handleGlobalMouseMove);
-    }
-    return () => window.removeEventListener("mousemove", handleGlobalMouseMove);
-  }, []);
 
   const fetchSystemData = async () => {
     try {
@@ -517,7 +428,7 @@ export default function Home() {
   const renderBadge = (status: "available" | "pending" | "in_use") => {
     if (status === "available") {
       return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
           <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
           Available
         </span>
@@ -525,14 +436,14 @@ export default function Home() {
     }
     if (status === "pending") {
       return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-700 border border-amber-500/20">
-          <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
           Pending
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-700 border border-rose-500/20">
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
         <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
         In Use
       </span>
@@ -541,7 +452,7 @@ export default function Home() {
 
   if (isAuthChecking) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-xs font-bold text-slate-500">
+      <div className="min-h-screen flex items-center justify-center text-xs font-bold text-slate-500">
         <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <Bot className="w-4 h-4 text-orange-500 animate-spin" />
           กำลังเชื่อมต่อระบบฐานข้อมูล FIBO...
@@ -553,17 +464,9 @@ export default function Home() {
   const smartRoom = getSmartRecommendedRoom();
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 min-h-screen bg-transparent font-sans text-slate-900 relative">
-      {/* Spotlight เฉพาะบนหน้าจอคอม */}
-      <div
-        className="pointer-events-none fixed inset-0 z-30 transition-opacity duration-300 hidden md:block"
-        style={{
-          background: `radial-gradient(550px circle at ${mousePos.x}px ${mousePos.y}px, rgba(249, 115, 22, 0.06), rgba(14, 165, 233, 0.04), transparent 70%)`,
-        }}
-      />
-
+    <div className="flex-1 flex flex-col min-w-0 min-h-screen font-sans text-slate-900">
       {/* Top Navbar */}
-      <header className="bg-white/85 sm:bg-white/60 sm:backdrop-blur-xl border-b border-slate-200/80 sm:border-white/80 px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4 sticky top-0 z-20 shadow-xs">
+      <header className="fibo-glass-nav px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3 sticky top-0 z-20">
         <div className="relative max-w-md w-full">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
@@ -571,14 +474,15 @@ export default function Home() {
             placeholder="ค้นหาห้อง เช่น FB201, Meeting..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-50 sm:bg-white/70 border border-slate-200/70 focus:border-orange-500 focus:bg-white rounded-2xl pl-10 pr-4 py-2 text-xs outline-none transition-all shadow-xs"
+            className="w-full bg-slate-100/80 border border-slate-200 focus:border-orange-500 focus:bg-white rounded-2xl pl-10 pr-4 py-2 text-xs outline-none transition-all"
           />
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <button
+            type="button"
             onClick={() => setShowSmartMatchModal(true)}
-            className="inline-flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 text-white text-xs font-black px-3 sm:px-4 py-2 rounded-2xl shadow-sm active:scale-95 transition-all"
+            className="inline-flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 text-white text-xs font-black px-3 sm:px-4 py-2 rounded-2xl shadow-sm transition-all"
           >
             <Sparkles className="w-3.5 h-3.5 text-white" />
             <span className="hidden sm:inline">AI Smart Match</span>
@@ -587,26 +491,27 @@ export default function Home() {
 
           {isAdmin && (
             <button
+              type="button"
               onClick={() => setShowAddRoomModal(true)}
-              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm active:scale-95 transition-all"
+              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm transition-all"
             >
               <Plus className="w-4 h-4" /> <span className="hidden sm:inline">สร้างห้องใหม่</span>
             </button>
           )}
 
-          <div className="hidden lg:flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 rounded-xl text-xs font-bold text-orange-700">
+          <div className="hidden lg:flex items-center gap-2 bg-orange-50 border border-orange-200 px-3 py-1.5 rounded-xl text-xs font-bold text-orange-700">
             <Clock className="w-3.5 h-3.5 text-orange-600" />
             โควตาคงเหลือ: {remainingQuota}/4 ชม.
           </div>
 
           <div className="text-right hidden xl:block">
-            <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">REALTIME</span>
-            <span className="text-xs font-black font-mono text-slate-800 bg-white/60 px-2 py-0.5 rounded-md border border-slate-100 notranslate">
+            <span className="text-[10px] text-slate-400 font-bold block uppercase">REALTIME</span>
+            <span className="text-xs font-black font-mono text-slate-800">
               {currentTime || "--:--:--"}
             </span>
           </div>
 
-          <div className="flex items-center gap-2 pl-2 border-l border-slate-200/70">
+          <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
             <div className="text-right hidden sm:block">
               <p className="text-xs font-black text-slate-800 uppercase flex items-center gap-1 justify-end">
                 {userName}
@@ -619,6 +524,7 @@ export default function Home() {
               <p className="text-[10px] text-slate-400 font-medium">{userEmail}</p>
             </div>
             <button
+              type="button"
               onClick={handleLogout}
               title="ออกจากระบบ"
               className="p-2 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-rose-600 transition-all"
@@ -630,11 +536,11 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="p-4 sm:p-6 space-y-6 max-w-7xl w-full mx-auto relative z-10">
+      <main className="p-4 sm:p-6 space-y-6 max-w-7xl w-full mx-auto">
         {/* Banner */}
-        <div className="relative overflow-hidden rounded-3xl p-6 sm:p-8 text-white bg-gradient-to-r from-slate-950 via-slate-900 to-orange-950 border border-white/10 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-          <div className="space-y-2 relative z-10">
-            <div className="flex items-center gap-2">
+        <div className="rounded-3xl p-6 sm:p-8 text-white bg-gradient-to-r from-slate-950 via-slate-900 to-orange-900 border border-slate-800 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider bg-orange-500/20 text-orange-400 border border-orange-500/30 px-3 py-1 rounded-full">
                 <Cpu className="w-3 h-3 text-orange-400" /> FIBO ROBOTICS & SMART INFRASTRUCTURE
               </span>
@@ -652,7 +558,7 @@ export default function Home() {
 
           <Link
             href="/schedule"
-            className="relative z-10 bg-white hover:bg-orange-50 text-slate-900 hover:text-orange-600 font-bold text-xs px-5 py-3 rounded-2xl shadow-md border border-white/60 transition-all shrink-0 flex items-center gap-2"
+            className="bg-white hover:bg-orange-50 text-slate-900 hover:text-orange-600 font-bold text-xs px-5 py-3 rounded-2xl shadow-md transition-all shrink-0 flex items-center gap-2"
           >
             <Calendar className="w-4 h-4 text-orange-600" /> ตารางรวม (Timeline)
           </Link>
@@ -660,42 +566,42 @@ export default function Home() {
 
         {/* 4 Cards Metrics */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-white/85 sm:bg-white/70 sm:backdrop-blur-xl rounded-3xl p-4 sm:p-5 border border-white/90 shadow-sm flex items-center gap-3 sm:gap-4">
-            <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-orange-500/10 text-orange-600 border border-orange-500/20 flex items-center justify-center shrink-0">
+          <div className="fibo-glass-card rounded-3xl p-4 sm:p-5 flex items-center gap-3 sm:gap-4">
+            <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-orange-50 text-orange-600 border border-orange-200/60 flex items-center justify-center shrink-0">
               <Layers className="w-5 sm:w-6 h-5 sm:h-6" />
             </div>
             <div>
-              <p className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">{totalRoomsCount}</p>
+              <p className="text-xl sm:text-2xl font-black text-slate-900">{totalRoomsCount}</p>
               <p className="text-[11px] sm:text-xs text-slate-500 font-semibold">Total Rooms</p>
             </div>
           </div>
 
-          <div className="bg-white/85 sm:bg-white/70 sm:backdrop-blur-xl rounded-3xl p-4 sm:p-5 border border-white/90 shadow-sm flex items-center gap-3 sm:gap-4">
-            <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center shrink-0">
+          <div className="fibo-glass-card rounded-3xl p-4 sm:p-5 flex items-center gap-3 sm:gap-4">
+            <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-200/60 flex items-center justify-center shrink-0">
               <span className="w-3.5 sm:w-4 h-3.5 sm:h-4 rounded-full bg-emerald-500" />
             </div>
             <div>
-              <p className="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight">{availableCount}</p>
+              <p className="text-xl sm:text-2xl font-black text-emerald-600">{availableCount}</p>
               <p className="text-[11px] sm:text-xs text-slate-500 font-semibold">Available Now</p>
             </div>
           </div>
 
-          <div className="bg-white/85 sm:bg-white/70 sm:backdrop-blur-xl rounded-3xl p-4 sm:p-5 border border-white/90 shadow-sm flex items-center gap-3 sm:gap-4">
-            <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center shrink-0">
+          <div className="fibo-glass-card rounded-3xl p-4 sm:p-5 flex items-center gap-3 sm:gap-4">
+            <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200/60 flex items-center justify-center shrink-0">
               <span className="w-3.5 sm:w-4 h-3.5 sm:h-4 rounded-full bg-amber-500 animate-pulse" />
             </div>
             <div>
-              <p className="text-xl sm:text-2xl font-black text-amber-600 tracking-tight">{pendingCount}</p>
+              <p className="text-xl sm:text-2xl font-black text-amber-600">{pendingCount}</p>
               <p className="text-[11px] sm:text-xs text-slate-500 font-semibold">Pending Check-in</p>
             </div>
           </div>
 
-          <div className="bg-white/85 sm:bg-white/70 sm:backdrop-blur-xl rounded-3xl p-4 sm:p-5 border border-white/90 shadow-sm flex items-center gap-3 sm:gap-4">
-            <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-rose-500/10 text-rose-600 border border-rose-500/20 flex items-center justify-center shrink-0">
+          <div className="fibo-glass-card rounded-3xl p-4 sm:p-5 flex items-center gap-3 sm:gap-4">
+            <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-rose-50 text-rose-600 border border-rose-200/60 flex items-center justify-center shrink-0">
               <span className="w-3.5 sm:w-4 h-3.5 sm:h-4 rounded-full bg-rose-500 animate-pulse" />
             </div>
             <div>
-              <p className="text-xl sm:text-2xl font-black text-rose-600 tracking-tight">{inUseCount}</p>
+              <p className="text-xl sm:text-2xl font-black text-rose-600">{inUseCount}</p>
               <p className="text-[11px] sm:text-xs text-slate-500 font-semibold">Occupied (In Use)</p>
             </div>
           </div>
@@ -703,18 +609,18 @@ export default function Home() {
 
         {/* 2 Columns */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Left: Rooms List */}
+          {/* Left: Rooms List */}
           <div className="lg:col-span-2 space-y-4">
-            {/* Floor Selection */}
             <div className="flex flex-wrap items-center gap-2">
               {["All", "2", "3", "4", "5", "6"].map((fl) => (
                 <button
                   key={fl}
+                  type="button"
                   onClick={() => setSelectedFloor(fl)}
                   className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all ${
                     selectedFloor === fl
-                      ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-md border border-orange-400"
-                      : "bg-white/80 text-slate-600 border border-white/80 hover:bg-white"
+                      ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-sm"
+                      : "bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50"
                   }`}
                 >
                   {fl === "All" ? "All Floors" : `Floor ${fl}`}
@@ -722,11 +628,9 @@ export default function Home() {
               ))}
             </div>
 
-            {/* Room Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {visibleRooms.map((room) => {
                 const realtimeStatus = getRoomRealtimeStatus(room.id);
-                const isRoomAvailable = realtimeStatus === "available";
                 const roomTodayBookings = allBookings.filter(
                   (b) =>
                     b.room_id === room.id &&
@@ -735,20 +639,18 @@ export default function Home() {
                 );
 
                 return (
-                  <TiltRoomCard
+                  <div
                     key={room.id}
-                    className={`bg-white/90 sm:bg-white/70 sm:backdrop-blur-xl rounded-3xl p-5 border border-white/90 shadow-sm flex flex-col justify-between space-y-4 group overflow-hidden ${
-                      isRoomAvailable ? "holo-card-available" : ""
-                    }`}
+                    className="fibo-glass-card rounded-3xl p-5 flex flex-col justify-between space-y-4 hover:-translate-y-1 hover:border-orange-300 transition-all duration-200 group"
                   >
-                    <div className="space-y-2 relative z-10">
+                    <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 font-mono">
                           LAB • FL {room.floor}
                         </span>
                         {renderBadge(realtimeStatus)}
                       </div>
-                      <h3 className="text-xl font-black text-slate-900 tracking-tight group-hover:text-orange-600 transition-colors">
+                      <h3 className="text-xl font-black text-slate-900 group-hover:text-orange-600 transition-colors">
                         {room.id}
                       </h3>
                       <p className="text-xs text-slate-500 flex items-center gap-1.5 font-medium">
@@ -757,10 +659,10 @@ export default function Home() {
                       </p>
                     </div>
 
-                    <div className="space-y-3 pt-3 border-t border-slate-100 relative z-10">
+                    <div className="space-y-3 pt-3 border-t border-slate-100">
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-slate-400 font-medium">คิวจองวันนี้</span>
-                        <span className="font-bold text-slate-700 bg-slate-100/80 px-2 py-0.5 rounded-lg border border-slate-200/50">
+                        <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg">
                           {roomTodayBookings.length > 0
                             ? `มี ${roomTodayBookings.length} ช่วงเวลา`
                             : "ว่างทุกช่วงเวลา"}
@@ -768,13 +670,14 @@ export default function Home() {
                       </div>
 
                       <button
+                        type="button"
                         onClick={() => handleOpenModal(room)}
-                        className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold text-xs shadow-md shadow-orange-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                        className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5"
                       >
                         <Zap className="w-3.5 h-3.5" /> Quick Book
                       </button>
                     </div>
-                  </TiltRoomCard>
+                  </div>
                 );
               })}
             </div>
@@ -782,10 +685,9 @@ export default function Home() {
 
           {/* Right Column: Quota & Active Pass */}
           <div className="space-y-4">
-            {/* Daily Quota Card */}
-            <div className="bg-white/90 sm:bg-white/70 sm:backdrop-blur-xl rounded-3xl p-5 border border-white/90 space-y-3.5 shadow-sm">
+            <div className="fibo-glass-card rounded-3xl p-5 space-y-3.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
+                <span className="text-xs font-black uppercase text-slate-700 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-orange-500" /> DAILY QUOTA
                 </span>
                 <span className="text-xs font-black text-orange-600 bg-orange-50 px-2.5 py-0.5 rounded-full border border-orange-200">
@@ -807,15 +709,14 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Active Pass Card */}
-            <div className="bg-white/90 sm:bg-white/70 sm:backdrop-blur-xl rounded-3xl p-5 border border-white/90 space-y-4 shadow-sm">
+            <div className="fibo-glass-card rounded-3xl p-5 space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black uppercase text-slate-700 tracking-wider">
+                <span className="text-xs font-black uppercase text-slate-700">
                   ACTIVE PASS (1 USER / 1 ROOM)
                 </span>
                 <Link
                   href="/my-booking"
-                  className="text-[11px] font-bold text-orange-600 hover:text-orange-700 transition-colors"
+                  className="text-[11px] font-bold text-orange-600 hover:underline"
                 >
                   View all ({myActiveBookings.length})
                 </Link>
@@ -834,17 +735,17 @@ export default function Home() {
                 myActiveBookings.map((b) => (
                   <div
                     key={b.id}
-                    className="p-4 rounded-2xl border border-slate-200/80 bg-white/60 space-y-3 shadow-xs"
+                    className="p-4 rounded-2xl border border-slate-200/80 bg-white/80 space-y-3"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-lg font-black text-slate-900 tracking-tight">
+                      <span className="text-lg font-black text-slate-900">
                         {b.room_id}
                       </span>
                       <span
                         className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
                           b.status === "checked_in"
-                            ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                            : "bg-amber-100 text-amber-800 border border-amber-200"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-amber-100 text-amber-800"
                         }`}
                       >
                         {b.status === "checked_in" ? "In Room" : "Pending Check-In"}
@@ -859,14 +760,15 @@ export default function Home() {
                     {b.status === "pending" ? (
                       <Link
                         href="/check-in"
-                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
+                        className="w-full py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs flex items-center justify-center gap-1.5"
                       >
                         <KeyRound className="w-3.5 h-3.5" /> ไปหน้าสแกน Check-In
                       </Link>
                     ) : (
                       <button
+                        type="button"
                         onClick={() => handleCheckOut(b)}
-                        className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
+                        className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5"
                       >
                         คืนห้อง (Check Out)
                       </button>
@@ -879,13 +781,13 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Modal: AI Smart Match Room */}
+      {/* Modal: AI Smart Match */}
       {showSmartMatchModal && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl border border-slate-100">
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-xs">
+                <div className="w-8 h-8 rounded-xl bg-orange-500 text-white flex items-center justify-center">
                   <Sparkles className="w-4 h-4" />
                 </div>
                 <div>
@@ -894,6 +796,7 @@ export default function Home() {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setShowSmartMatchModal(false)}
                 className="p-1 text-slate-400 hover:text-slate-600"
               >
@@ -914,8 +817,8 @@ export default function Home() {
                     onClick={() => setSmartPeopleGroup(cnt)}
                     className={`py-2 rounded-xl text-xs font-bold border transition-all ${
                       smartPeopleGroup === cnt
-                        ? "bg-orange-500 text-white border-orange-500 shadow-xs scale-105"
-                        : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-white"
+                        ? "bg-orange-500 text-white border-orange-500"
+                        : "bg-slate-50 text-slate-600 border-slate-200"
                     }`}
                   >
                     {cnt} คน
@@ -925,13 +828,13 @@ export default function Home() {
             </div>
 
             {smartRoom ? (
-              <div className="bg-gradient-to-br from-orange-50 via-white to-amber-50 border border-orange-200 rounded-2xl p-4 space-y-3 shadow-xs">
+              <div className="bg-orange-50/70 border border-orange-200 rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase text-orange-600 bg-orange-100 px-2.5 py-0.5 rounded-full border border-orange-200 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" /> BEST MATCH
+                  <span className="text-[10px] font-black uppercase text-orange-600 bg-orange-100 px-2.5 py-0.5 rounded-full">
+                    BEST MATCH
                   </span>
-                  <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span> ว่างพร้อมใช้
+                  <span className="text-xs font-bold text-emerald-600">
+                    ● ว่างพร้อมใช้
                   </span>
                 </div>
 
@@ -942,24 +845,20 @@ export default function Home() {
                   </p>
                 </div>
 
-                <div className="text-[11px] text-slate-600 space-y-1 bg-white/80 rounded-xl p-2.5 border border-orange-100 font-medium">
-                  <p className="text-emerald-700 font-bold">✓ ขนาดห้องพอดีกับ {smartPeopleGroup} คน ไม่เปลืองพลังงาน</p>
-                  <p>✓ สถานะปัจจุบันว่าง พร้อมใช้งานได้ทันที</p>
-                </div>
-
                 <button
+                  type="button"
                   onClick={() => {
                     setShowSmartMatchModal(false);
                     handleOpenModal(smartRoom);
                   }}
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 text-white text-xs font-black shadow-md shadow-orange-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                  className="w-full py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-black flex items-center justify-center gap-1.5"
                 >
                   เลือกจองห้อง {smartRoom.id} ทันที <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             ) : (
               <div className="text-center py-6 text-xs text-slate-400">
-                ขณะนี้ไม่มีห้องว่างที่ตรงตามเงื่อนไข กรุณาลองเลือกจำนวนคนใหม่
+                ขณะนี้ไม่มีห้องว่างที่ตรงตามเงื่อนไข
               </div>
             )}
           </div>
@@ -968,8 +867,8 @@ export default function Home() {
 
       {/* Modal จองห้อง */}
       {modalRoom && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto overflow-x-hidden">
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
             <div className="flex items-start justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-xl font-black text-slate-900">
@@ -980,14 +879,15 @@ export default function Home() {
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setModalRoom(null)}
-                className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-700"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2">
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
               <p className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-orange-600" />
                 ช่วงเวลาที่มีผู้จองแล้วในวันที่ {formDate}:
@@ -1021,7 +921,7 @@ export default function Home() {
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
                   placeholder="ระบุวัตถุประสงค์ เช่น พัฒนาหุ่นยนต์, ประชุมโปรเจกต์..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium outline-none focus:border-orange-500 focus:bg-white transition-all"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium outline-none focus:border-orange-500"
                 />
               </div>
 
@@ -1035,7 +935,7 @@ export default function Home() {
                   min={todayStr}
                   max={tomorrowStr}
                   onChange={(e) => setFormDate(e.target.value)}
-                  className="w-full max-w-full min-w-0 block appearance-none bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none focus:border-orange-500 focus:bg-white transition-all"
+                  className="w-full max-w-full min-w-0 block appearance-none bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none focus:border-orange-500"
                 />
               </div>
 
@@ -1055,7 +955,7 @@ export default function Home() {
                     className={`text-center px-4 py-2 rounded-2xl transition-all ${
                       activeTimePicker === "start"
                         ? "bg-white shadow-md border-2 border-orange-500 scale-105"
-                        : "bg-slate-100 border border-slate-200 hover:bg-white"
+                        : "bg-slate-100 border border-slate-200"
                     }`}
                   >
                     <span className="block text-[10px] font-bold text-slate-400 uppercase">Start</span>
@@ -1072,7 +972,7 @@ export default function Home() {
                     className={`text-center px-4 py-2 rounded-2xl transition-all ${
                       activeTimePicker === "end"
                         ? "bg-white shadow-md border-2 border-sky-500 scale-105"
-                        : "bg-slate-100 border border-slate-200 hover:bg-white"
+                        : "bg-slate-100 border border-slate-200"
                     }`}
                   >
                     <span className="block text-[10px] font-bold text-slate-400 uppercase">End</span>
@@ -1089,14 +989,14 @@ export default function Home() {
                   </span>
                 </div>
 
-                <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-inner">
+                <div className="bg-white rounded-xl border border-slate-200 p-3">
                   <div className="grid grid-cols-2 gap-2 text-center text-[10px] font-black text-slate-400 border-b border-slate-100 pb-1.5 mb-1.5">
                     <span>HOURS</span>
                     <span>MINUTES</span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 h-36">
-                    <div className="overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                    <div className="overflow-y-auto space-y-1 pr-1">
                       {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map((hour) => {
                         const currentVal = activeTimePicker === "start" ? formStart : formEnd;
                         const [currH, currM] = currentVal.split(":");
@@ -1122,8 +1022,8 @@ export default function Home() {
                                 ? "text-slate-300 line-through cursor-not-allowed bg-slate-50"
                                 : isSelected
                                 ? activeTimePicker === "start"
-                                  ? "bg-orange-500 text-white shadow-sm"
-                                  : "bg-sky-500 text-white shadow-sm"
+                                  ? "bg-orange-500 text-white"
+                                  : "bg-sky-500 text-white"
                                 : "text-slate-600 hover:bg-slate-100"
                             }`}
                           >
@@ -1133,7 +1033,7 @@ export default function Home() {
                       })}
                     </div>
 
-                    <div className="overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                    <div className="overflow-y-auto space-y-1 pr-1">
                       {["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"].map((minute) => {
                         const currentVal = activeTimePicker === "start" ? formStart : formEnd;
                         const [currH, currM] = currentVal.split(":");
@@ -1159,8 +1059,8 @@ export default function Home() {
                                 ? "text-slate-300 line-through cursor-not-allowed bg-slate-50"
                                 : isSelected
                                 ? activeTimePicker === "start"
-                                  ? "bg-orange-500 text-white shadow-sm"
-                                  : "bg-sky-500 text-white shadow-sm"
+                                  ? "bg-orange-500 text-white"
+                                  : "bg-sky-500 text-white"
                                 : "text-slate-600 hover:bg-slate-100"
                             }`}
                           >
@@ -1184,7 +1084,7 @@ export default function Home() {
                     max={modalRoom.capacity}
                     value={formPeople}
                     onChange={(e) => setFormPeople(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none focus:border-orange-500 transition-all"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none focus:border-orange-500"
                   />
                 </div>
 
@@ -1205,14 +1105,14 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => setModalRoom(null)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 disabled:bg-slate-300 text-white text-xs font-bold shadow-md shadow-orange-600/20 active:scale-95 transition-all"
+                  className="px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 disabled:bg-slate-300 text-white text-xs font-bold shadow-md"
                 >
                   {isSubmitting ? "กำลังบันทึก..." : "ยืนยันการจอง"}
                 </button>
@@ -1224,8 +1124,8 @@ export default function Home() {
 
       {/* Modal สร้างห้องใหม่ Admin */}
       {showAddRoomModal && isAdmin && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-100">
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <span className="text-[10px] font-bold uppercase text-emerald-600">
@@ -1236,6 +1136,7 @@ export default function Home() {
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => setShowAddRoomModal(false)}
                 className="p-1 text-slate-400 hover:text-slate-600"
               >
@@ -1311,14 +1212,14 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => setShowAddRoomModal(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
                   disabled={isCreatingRoom}
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md active:scale-95 transition-all"
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
                 >
                   {isCreatingRoom ? "กำลังสร้าง..." : "บันทึกห้องใหม่"}
                 </button>
@@ -1330,14 +1231,14 @@ export default function Home() {
 
       {/* Modal แจ้งเตือนหมดเวลาใช้งาน */}
       {timeOutAlertBooking && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-slate-100">
-            <div className="w-16 h-16 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto border border-rose-500/20">
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl">
+            <div className="w-16 h-16 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mx-auto">
               <Clock className="w-8 h-8 animate-bounce" />
             </div>
 
             <div className="space-y-1.5">
-              <span className="text-[10px] font-black uppercase text-rose-600 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200">
+              <span className="text-[10px] font-black uppercase text-rose-600 bg-rose-50 px-2.5 py-0.5 rounded-full">
                 TIME'S UP • CHECK-OUT
               </span>
               <h3 className="text-xl font-black text-slate-900">
@@ -1348,7 +1249,22 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="bg-slate-50 rounded-2xl p-3 text-[11px] text-slate-600 text-left space-y-1 border border-slate-100">
+            <div className="bg-slate-50 rounded-2xl p-3 text-[11px] text-slate-600 text-left space-y-1">
               <p>• กรุณาตรวจสอบสัมภาระส่วนตัว</p>
               <p>• ปิดเครื่องปรับอากาศและไฟก่อนออกจากห้อง</p>
               <p>• ส่งมอบห้องให้แก่ผู้เข้าใช้งานคิวถัดไป</p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setTimeOutAlertBooking(null)}
+              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-orange-600 text-white text-xs font-bold transition-all"
+            >
+              รับทราบ
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

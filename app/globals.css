@@ -1,267 +1,68 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --foreground-rgb: 15, 23, 42;
+  --background-start-rgb: 248, 250, 252;
+  --background-end-rgb: 248, 250, 252;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-/* ========================================================
-   FIBO ROBOTICS & LIQUID GLASS MODERN STYLING
-   ======================================================== */
-
-/* พื้นหลังตารางไซเบอร์แบบบางเฉียบสไตล์ Robotics Lab */
-.cyber-grid-bg {
-  background-color: #f8fafc;
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(249, 115, 22, 0.08) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, rgba(14, 165, 233, 0.08) 0px, transparent 50%),
-    linear-gradient(to right, rgba(226, 232, 240, 0.4) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(226, 232, 240, 0.4) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
-}
-
-/* คลาส Liquid Glass กระจกสะท้อนแสงพรีเมียม */
-.liquid-glass {
-  background: rgba(255, 255, 255, 0.65) !important;
-  backdrop-filter: blur(16px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.8) !important;
-  box-shadow: 
-    0 8px 32px 0 rgba(15, 23, 42, 0.05),
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.9),
-    inset 0 -1px 2px 0 rgba(0, 0, 0, 0.03) !important;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.liquid-glass:hover {
-  background: rgba(255, 255, 255, 0.78) !important;
-  border-color: rgba(249, 115, 22, 0.4) !important;
-  box-shadow: 
-    0 14px 40px -10px rgba(249, 115, 22, 0.12),
-    0 4px 12px 0 rgba(15, 23, 42, 0.04),
-    inset 0 1px 2px 0 rgba(255, 255, 255, 1) !important;
-  transform: translateY(-2px);
-}
-
-/* เอฟเฟกต์แสงสะท้อนวิ่งผ่านกระจก (Subtle Light Sheen) */
-.liquid-reflection {
-  position: relative;
-  overflow: hidden;
-}
-
-.liquid-reflection::after {
-  content: "";
-  position: absolute;
-  top: -50%;
-  left: -150%;
-  width: 200%;
-  height: 200%;
-  background: linear-gradient(
-    60deg,
-    transparent 35%,
-    rgba(255, 255, 255, 0.45) 50%,
-    transparent 65%
-  );
-  transform: rotate(25deg);
-  pointer-events: none;
-  animation: lightSweep 9s infinite cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@keyframes lightSweep {
-  0%, 70% {
-    left: -150%;
-  }
-  100% {
-    left: 150%;
-  }
-}
-
-/* แอนิเมชันลูกแก้ว Ambient Drift เคลื่อนไหวนุ่มนวล */
-@keyframes ambientDrift {
-  0%, 100% {
-    transform: translate(0px, 0px) scale(1);
-  }
-  50% {
-    transform: translate(25px, -20px) scale(1.08);
-  }
-}
-
-.animate-ambient-slow {
-  animation: ambientDrift 14s infinite ease-in-out alternate;
-}
-
-/* แอนิเมชันลอยตัวเบาๆ สำหรับองค์ประกอบหุ่นยนต์ */
-@keyframes robotFloat {
-  0%, 100% {
-    transform: translateY(0px) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-6px) rotate(1deg);
-  }
-}
-
-.animate-robot-float {
-  animation: robotFloat 4.5s infinite ease-in-out;
-}
-/* ========================================================
-   FIBO ROBOTICS: 3D TILT, HOLO SHIMMER & CYBER LIGHTING
-   ======================================================== */
-
-/* ขอบเรืองแสง Holographic เหลือบรุ้ง สำหรับห้องที่ว่าง */
-@keyframes holoShimmer {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-.holo-card-available {
-  position: relative;
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-start-rgb));
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ========================================================
-   FIBO ROBOTICS: 3D TILT, HOLO SHIMMER & CYBER LIGHTING
-   ======================================================== */
-
-.holo-card-available {
-  position: relative;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* สถานะปกติ: ซ่อนแสงเหลือบออกทั้งหมด ให้เป็นการ์ดกระจกคลีนตา */
-.holo-card-available::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  border-radius: 26px;
-  background: linear-gradient(
-    135deg,
-    rgba(16, 185, 129, 0.25),
-    rgba(249, 115, 22, 0.2)
-  );
-  z-index: -1;
-  opacity: 0;
-  filter: blur(8px);
-  transition: opacity 0.4s ease, filter 0.4s ease;
-}
-
-/* แสดงแสงเรืองนุ่มนวลรอบการ์ดเฉพาะเวลาเอาเมาส์ไปชี้ (Hover) */
-.holo-card-available:hover::before {
-  opacity: 0.65;
-  filter: blur(10px);
-}
-
-/* เอฟเฟกต์เด้งดึ๋งเมื่อคลิกคุยกับหุ่นยนต์ */
-@keyframes botJump {
-  0%, 100% { transform: translateY(0) scale(1); }
-  35% { transform: translateY(-16px) scale(1.12) rotate(4deg); }
-  65% { transform: translateY(-4px) scale(0.96) rotate(-2deg); }
-}
-
-.animate-bot-jump {
-  animation: botJump 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.holo-card-available:hover::before {
-  opacity: 1;
-  filter: blur(5px);
-}
-
-/* เอฟเฟกต์เด้งดึ๋งเมื่อคลิกคุยกับหุ่นยนต์ */
-@keyframes botJump {
-  0%, 100% { transform: translateY(0) scale(1); }
-  35% { transform: translateY(-16px) scale(1.12) rotate(4deg); }
-  65% { transform: translateY(-4px) scale(0.96) rotate(-2deg); }
-}
-
-.animate-bot-jump {
-  animation: botJump 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-/* ========================================================
-   FIBO ROBOTICS: GRID, LIQUID GLASS & AMBIENT ANIMATIONS
+   FIBO ROBOTICS: SAFE LIQUID GLASS & GRID (iOS COMPATIBLE)
    ======================================================== */
 
 .fibo-cyber-grid {
   background-color: #f8fafc;
   background-image: 
-    radial-gradient(at 0% 0%, rgba(249, 115, 22, 0.08) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, rgba(14, 165, 233, 0.08) 0px, transparent 50%),
-    linear-gradient(to right, rgba(226, 232, 240, 0.5) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(226, 232, 240, 0.5) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
+    linear-gradient(to right, rgba(226, 232, 240, 0.6) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(226, 232, 240, 0.6) 1px, transparent 1px);
+  background-size: 36px 36px;
 }
 
-/* รัน Ambient Animation เบาๆ เฉพาะบนคอมเพื่อประหยัดแรมมือถือ */
-@media (min-width: 768px) {
-  @keyframes ambientFloat {
-    0%, 100% { transform: translate(0px, 0px) scale(1); }
-    50% { transform: translate(30px, -20px) scale(1.08); }
-  }
-  .animate-ambient-pulse {
-    animation: ambientFloat 14s infinite ease-in-out alternate;
-  }
+.fibo-glass-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.82));
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 
+    0 10px 30px -5px rgba(15, 23, 42, 0.05),
+    inset 0 1px 2px 0 rgba(255, 255, 255, 1);
 }
 
 .fibo-glass-nav {
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.9);
   box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.1);
-}
-
-.holo-card-available {
-  position: relative;
-}
-
-/* แสดงแสงเรืองนุ่มนวลเฉพาะบนคอมที่มีเมาส์ชี้ (Hover) */
-@media (hover: hover) and (pointer: fine) {
-  .holo-card-available::before {
-    content: "";
-    position: absolute;
-    inset: -1px;
-    border-radius: 26px;
-    background: linear-gradient(
-      135deg,
-      rgba(16, 185, 129, 0.25),
-      rgba(249, 115, 22, 0.2)
-    );
-    z-index: -1;
-    opacity: 0;
-    filter: blur(8px);
-    transition: opacity 0.4s ease, filter 0.4s ease;
-  }
-
-  .holo-card-available:hover::before {
-    opacity: 0.65;
-    filter: blur(10px);
-  }
 }
 
 @keyframes botJump {
   0%, 100% { transform: translateY(0) scale(1); }
-  35% { transform: translateY(-16px) scale(1.12) rotate(4deg); }
-  65% { transform: translateY(-4px) scale(0.96) rotate(-2deg); }
+  40% { transform: translateY(-12px) scale(1.08); }
 }
 
 .animate-bot-jump {
-  animation: botJump 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: botJump 0.45s ease-out;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(203, 213, 225, 0.8);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 1);
 }
