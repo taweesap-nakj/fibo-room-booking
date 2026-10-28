@@ -58,7 +58,7 @@ export default function UserNav() {
   ];
 
   return (
-    <aside className="w-64 bg-[#0F172A] text-white flex-col justify-between hidden lg:flex shrink-0 min-h-screen">
+    <aside className="w-64 bg-[#0F172A] text-white flex-col justify-between hidden lg:flex shrink-0 h-screen sticky top-0 overflow-y-auto z-30">
       <div className="p-6 space-y-8">
         {/* Logo FIBO แบบไม่มีกรอบขาวหนา */}
         <div className="flex items-center gap-3">

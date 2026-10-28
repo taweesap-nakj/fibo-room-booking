@@ -22,6 +22,8 @@ import {
   Sparkles,
   Cpu,
   ArrowRight,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 
 const getLocalDateStr = (d = new Date()) => {
@@ -59,12 +61,22 @@ export default function Home() {
   const [showSmartMatchModal, setShowSmartMatchModal] = useState<boolean>(false);
   const [smartPeopleGroup, setSmartPeopleGroup] = useState<number>(4);
 
+  // State สำหรับเพิ่มห้องใหม่
   const [showAddRoomModal, setShowAddRoomModal] = useState<boolean>(false);
   const [newRoomId, setNewRoomId] = useState<string>("");
   const [newRoomFloor, setNewRoomFloor] = useState<number>(2);
   const [newRoomCapacity, setNewRoomCapacity] = useState<number>(20);
   const [newRoomType, setNewRoomType] = useState<string>("Lecture Room");
   const [isCreatingRoom, setIsCreatingRoom] = useState<boolean>(false);
+
+  // State สำหรับจัดการและแก้ไขข้อมูลห้อง (Admin Only)
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [editRoomId, setEditRoomId] = useState<string>("");
+  const [editRoomFloor, setEditRoomFloor] = useState<number>(2);
+  const [editRoomCapacity, setEditRoomCapacity] = useState<number>(10);
+  const [editRoomType, setEditRoomType] = useState<string>("Meeting Room");
+  const [isUpdatingRoom, setIsUpdatingRoom] = useState<boolean>(false);
+  const [isDeletingRoom, setIsDeletingRoom] = useState<boolean>(false);
 
   const todayStr = getLocalDateStr();
   const tomorrowStr = getLocalDateStr(new Date(Date.now() + 86400000));
@@ -247,6 +259,14 @@ export default function Home() {
     setFormEnd(`${eh}:${em}`);
   };
 
+  const handleOpenEditModal = (room: Room) => {
+    setEditingRoom(room);
+    setEditRoomId(room.id);
+    setEditRoomFloor(Number(room.floor) || 2);
+    setEditRoomCapacity(Number(room.capacity) || 10);
+    setEditRoomType(room.type || "Meeting Room");
+  };
+
   const isTimeSlotTaken = (timeStr: string) => {
     if (!modalRoom) return false;
     const slotMs = new Date(`${formDate}T${timeStr}:00`).getTime();
@@ -388,6 +408,102 @@ export default function Home() {
     }
   };
 
+  // ฟังก์ชันแก้ไขข้อมูลห้องทุกฟิลด์ (Admin Only)
+  const handleUpdateRoom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRoom) return;
+    const cleanId = editRoomId.trim().toUpperCase();
+    if (!cleanId) {
+      alert("กรุณากรอกรหัส/ชื่อห้อง");
+      return;
+    }
+
+    setIsUpdatingRoom(true);
+    try {
+      const isIdChanged = cleanId !== editingRoom.id;
+
+      if (isIdChanged) {
+        // อัปเดตรหัสห้องและฟิลด์ทั้งหมด
+        const { error: roomError } = await supabase
+          .from("rooms")
+          .update({
+            id: cleanId,
+            floor: Number(editRoomFloor),
+            capacity: Number(editRoomCapacity),
+            type: editRoomType,
+          })
+          .eq("id", editingRoom.id);
+
+        if (roomError) throw roomError;
+
+        // อัปเดตรหัสห้องใน bookings ให้ตรงกัน
+        await supabase
+          .from("bookings")
+          .update({ room_id: cleanId })
+          .eq("room_id", editingRoom.id);
+      } else {
+        // อัปเดตเฉพาะรายละเอียด (ไม่เปลี่ยน ID)
+        const { error: roomError } = await supabase
+          .from("rooms")
+          .update({
+            floor: Number(editRoomFloor),
+            capacity: Number(editRoomCapacity),
+            type: editRoomType,
+          })
+          .eq("id", editingRoom.id);
+
+        if (roomError) throw roomError;
+      }
+
+      setEditingRoom(null);
+      fetchSystemData();
+      alert("บันทึกการแก้ไขข้อมูลห้องสำเร็จเรียบร้อย!");
+    } catch (err: any) {
+      alert("ไม่สามารถแก้ไขข้อมูลห้องได้: " + (err.message || "เกิดข้อผิดพลาดในการเชื่อมต่อ"));
+    } finally {
+      setIsUpdatingRoom(false);
+    }
+  };
+
+  // ฟังก์ชันลบห้องทิ้ง (แบบ ก: ลบประวัติการจองทั้งหมดที่ผูกกับห้องนี้ทิ้งด้วย)
+  const handleDeleteRoom = async () => {
+    if (!editingRoom) return;
+
+    const confirmed = confirm(
+      `⚠️ คำเตือนการลบห้อง:\nคุณต้องการลบห้อง "${editingRoom.id}" ใช่หรือไม่?\n\nการลบนี้จะทำการลบประวัติและรายการจองทั้งหมดที่เกี่ยวข้องกับห้องนี้ทิ้งอย่างถาวร!`
+    );
+    if (!confirmed) return;
+
+    setIsDeletingRoom(true);
+    try {
+      // 1. ลบรายการจองที่ผูกกับห้องนี้ในตาราง bookings
+      const { error: bookingDeleteError } = await supabase
+        .from("bookings")
+        .delete()
+        .eq("room_id", editingRoom.id);
+
+      if (bookingDeleteError) {
+        console.warn("Booking delete notice:", bookingDeleteError);
+      }
+
+      // 2. ลบตัวห้องออกจากตาราง rooms
+      const { error: roomDeleteError } = await supabase
+        .from("rooms")
+        .delete()
+        .eq("id", editingRoom.id);
+
+      if (roomDeleteError) throw roomDeleteError;
+
+      setEditingRoom(null);
+      fetchSystemData();
+      alert(`ลบห้อง "${editingRoom.id}" และรายการจองทั้งหมดสำเร็จเรียบร้อย!`);
+    } catch (err: any) {
+      alert("ไม่สามารถลบห้องได้: " + (err.message || "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล"));
+    } finally {
+      setIsDeletingRoom(false);
+    }
+  };
+
   const getSmartRecommendedRoom = () => {
     const availableRooms = rooms.filter((r) => getRoomRealtimeStatus(r.id) === "available");
     if (availableRooms.length === 0) return null;
@@ -465,7 +581,6 @@ export default function Home() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-screen font-sans text-slate-900">
-      {/* Top Navbar */}
       {/* Top Navbar: Responsive 2-Row on Mobile, 1-Row on Desktop */}
       <header className="fibo-glass-nav px-4 sm:px-6 py-2.5 sm:py-3.5 sticky top-0 z-20 transition-all">
         {/* Mobile Only: แถบโปรไฟล์ผู้ใช้ + โควตา + ปุ่มออกจากระบบ */}
@@ -502,7 +617,7 @@ export default function Home() {
               type="button"
               onClick={handleLogout}
               title="ออกจากระบบ"
-              className="p-1.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-rose-600 active:scale-95 transition-all"
+              className="p-1.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-rose-600 active:scale-95 transition-all cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
             </button>
@@ -526,28 +641,27 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setShowSmartMatchModal(true)}
-              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 text-white text-xs font-black px-3 sm:px-4 py-2 rounded-2xl shadow-sm active:scale-95 transition-all"
+              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 text-white text-xs font-black px-3.5 py-2 rounded-2xl shadow-sm active:scale-95 transition-all whitespace-nowrap shrink-0 cursor-pointer"
             >
-              <Sparkles className="w-3.5 h-3.5 text-white" />
-              <span className="hidden sm:inline">Room Match</span>
-              <span className="sm:hidden">Room Match</span>
+              <Sparkles className="w-3.5 h-3.5 text-white shrink-0" />
+              <span>Room Match</span>
             </button>
 
             {isAdmin && (
               <button
                 type="button"
                 onClick={() => setShowAddRoomModal(true)}
-                className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm transition-all"
+                className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm transition-all whitespace-nowrap shrink-0 cursor-pointer"
               >
-                <Plus className="w-4 h-4" />{" "}
+                <Plus className="w-4 h-4 shrink-0" />
                 <span className="hidden sm:inline">สร้างห้องใหม่</span>
               </button>
             )}
 
             {/* Quota สำหรับจอคอมพิวเตอร์ */}
-            <div className="hidden lg:flex items-center gap-2 bg-orange-50 border border-orange-200 px-3 py-1.5 rounded-xl text-xs font-bold text-orange-700">
+            <div className="hidden lg:flex items-center gap-2 bg-orange-50 border border-orange-200 px-3 py-1.5 rounded-xl text-xs font-bold text-orange-700 whitespace-nowrap">
               <Clock className="w-3.5 h-3.5 text-orange-600" />
-              โควตาคงเหลือ: {remainingQuota}/4 ชม.
+              <span>โควตาคงเหลือ: {remainingQuota}/4 ชม.</span>
             </div>
 
             {/* นาฬิกา Realtime สำหรับจอคอมพิวเตอร์ */}
@@ -579,7 +693,7 @@ export default function Home() {
                 type="button"
                 onClick={handleLogout}
                 title="ออกจากระบบ"
-                className="p-2 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-rose-600 transition-all"
+                className="p-2 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-rose-600 transition-all cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -611,7 +725,7 @@ export default function Home() {
 
           <Link
             href="/schedule"
-            className="bg-white hover:bg-orange-50 text-slate-900 hover:text-orange-600 font-bold text-xs px-5 py-3 rounded-2xl shadow-md transition-all shrink-0 flex items-center gap-2"
+            className="bg-white hover:bg-orange-50 text-slate-900 hover:text-orange-600 font-bold text-xs px-5 py-3 rounded-2xl shadow-md transition-all shrink-0 flex items-center gap-2 cursor-pointer"
           >
             <Calendar className="w-4 h-4 text-orange-600" /> ตารางรวม (Timeline)
           </Link>
@@ -670,7 +784,7 @@ export default function Home() {
                   key={fl}
                   type="button"
                   onClick={() => setSelectedFloor(fl)}
-                  className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all ${
+                  className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
                     selectedFloor === fl
                       ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-sm"
                       : "bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50"
@@ -703,9 +817,27 @@ export default function Home() {
                         </span>
                         {renderBadge(realtimeStatus)}
                       </div>
-                      <h3 className="text-xl font-black text-slate-900 group-hover:text-orange-600 transition-colors">
-                        {room.id}
-                      </h3>
+
+                      {/* ชื่อห้อง + ปุ่มฟังก์ชันแก้ไขสำหรับ Admin */}
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xl font-black text-slate-900 group-hover:text-orange-600 transition-colors">
+                          {room.id}
+                        </h3>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditModal(room);
+                            }}
+                            title="แก้ไขข้อมูลห้อง"
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-orange-600 hover:bg-orange-50 active:scale-95 transition-all cursor-pointer"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
                       <p className="text-xs text-slate-500 flex items-center gap-1.5 font-medium">
                         <Users className="w-3.5 h-3.5 text-orange-500" />
                         {room.capacity} people • {room.type}
@@ -725,7 +857,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => handleOpenModal(room)}
-                        className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5"
+                        className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Zap className="w-3.5 h-3.5" /> Quick Book
                       </button>
@@ -769,7 +901,7 @@ export default function Home() {
                 </span>
                 <Link
                   href="/my-booking"
-                  className="text-[11px] font-bold text-orange-600 hover:underline"
+                  className="text-[11px] font-bold text-orange-600 hover:underline cursor-pointer"
                 >
                   View all ({myActiveBookings.length})
                 </Link>
@@ -813,7 +945,7 @@ export default function Home() {
                     {b.status === "pending" ? (
                       <Link
                         href="/check-in"
-                        className="w-full py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs flex items-center justify-center gap-1.5"
+                        className="w-full py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <KeyRound className="w-3.5 h-3.5" /> ไปหน้าสแกน Check-In
                       </Link>
@@ -821,7 +953,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => handleCheckOut(b)}
-                        className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5"
+                        className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         คืนห้อง (Check Out)
                       </button>
@@ -834,7 +966,126 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Modal: AI Smart Match */}
+      {/* Modal: จัดการและแก้ไขข้อมูลห้อง (Admin Only) */}
+      {editingRoom && isAdmin && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-bold uppercase text-orange-600 font-mono">
+                  ADMIN ROOM CONTROL
+                </span>
+                <h3 className="text-lg font-black text-slate-900">
+                  แก้ไขข้อมูลห้อง {editingRoom.id}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingRoom(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateRoom} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  รหัส / ชื่อห้อง
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editRoomId}
+                  onChange={(e) => setEditRoomId(e.target.value)}
+                  placeholder="เช่น FB201, FB405"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold uppercase outline-none focus:border-orange-500 transition-all"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    ชั้น (Floor)
+                  </label>
+                  <select
+                    value={editRoomFloor}
+                    onChange={(e) => setEditRoomFloor(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-orange-500"
+                  >
+                    {[2, 3, 4, 5, 6].map((fl) => (
+                      <option key={fl} value={fl}>
+                        ชั้น {fl}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    ความจุ (จำนวนคน)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={editRoomCapacity}
+                    onChange={(e) => setEditRoomCapacity(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  ประเภทห้อง
+                </label>
+                <select
+                  value={editRoomType}
+                  onChange={(e) => setEditRoomType(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-orange-500"
+                >
+                  <option value="Lecture Room">Lecture Room</option>
+                  <option value="Meeting Room">Meeting Room</option>
+                  <option value="Lab / Workshop">Lab / Workshop</option>
+                  <option value="Seminar Room">Seminar Room</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={isDeletingRoom || isUpdatingRoom}
+                  onClick={handleDeleteRoom}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-rose-200 text-xs font-bold text-rose-600 hover:bg-rose-50 active:scale-95 disabled:opacity-50 transition-all cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isDeletingRoom ? "กำลังลบ..." : "ลบห้องนี้"}</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingRoom(null)}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isUpdatingRoom || isDeletingRoom}
+                    className="px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-orange-600/20 cursor-pointer"
+                  >
+                    {isUpdatingRoom ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Room Match */}
       {showSmartMatchModal && (
         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl">
@@ -851,7 +1102,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setShowSmartMatchModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-600"
+                className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -868,7 +1119,7 @@ export default function Home() {
                     key={cnt}
                     type="button"
                     onClick={() => setSmartPeopleGroup(cnt)}
-                    className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                    className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                       smartPeopleGroup === cnt
                         ? "bg-orange-500 text-white border-orange-500"
                         : "bg-slate-50 text-slate-600 border-slate-200"
@@ -904,7 +1155,7 @@ export default function Home() {
                     setShowSmartMatchModal(false);
                     handleOpenModal(smartRoom);
                   }}
-                  className="w-full py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-black flex items-center justify-center gap-1.5"
+                  className="w-full py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   เลือกจองห้อง {smartRoom.id} ทันที <ArrowRight className="w-4 h-4" />
                 </button>
@@ -934,7 +1185,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setModalRoom(null)}
-                className="p-1.5 rounded-full text-slate-400 hover:text-slate-700"
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1005,7 +1256,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setActiveTimePicker("start")}
-                    className={`text-center px-4 py-2 rounded-2xl transition-all ${
+                    className={`text-center px-4 py-2 rounded-2xl transition-all cursor-pointer ${
                       activeTimePicker === "start"
                         ? "bg-white shadow-md border-2 border-orange-500 scale-105"
                         : "bg-slate-100 border border-slate-200"
@@ -1022,7 +1273,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setActiveTimePicker("end")}
-                    className={`text-center px-4 py-2 rounded-2xl transition-all ${
+                    className={`text-center px-4 py-2 rounded-2xl transition-all cursor-pointer ${
                       activeTimePicker === "end"
                         ? "bg-white shadow-md border-2 border-sky-500 scale-105"
                         : "bg-slate-100 border border-slate-200"
@@ -1070,7 +1321,7 @@ export default function Home() {
                               if (activeTimePicker === "start") setFormStart(newTime);
                               else setFormEnd(newTime);
                             }}
-                            className={`w-full py-1.5 text-xs font-bold rounded-lg transition-all ${
+                            className={`w-full py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                               isPastHour
                                 ? "text-slate-300 line-through cursor-not-allowed bg-slate-50"
                                 : isSelected
@@ -1107,7 +1358,7 @@ export default function Home() {
                               if (activeTimePicker === "start") setFormStart(newTime);
                               else setFormEnd(newTime);
                             }}
-                            className={`w-full py-1.5 text-xs font-bold rounded-lg transition-all ${
+                            className={`w-full py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                               isDisabled
                                 ? "text-slate-300 line-through cursor-not-allowed bg-slate-50"
                                 : isSelected
@@ -1158,14 +1409,14 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => setModalRoom(null)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 disabled:bg-slate-300 text-white text-xs font-bold shadow-md"
+                  className="px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 disabled:bg-slate-300 text-white text-xs font-bold shadow-md cursor-pointer"
                 >
                   {isSubmitting ? "กำลังบันทึก..." : "ยืนยันการจอง"}
                 </button>
@@ -1191,7 +1442,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setShowAddRoomModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-600"
+                className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1265,14 +1516,14 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => setShowAddRoomModal(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600"
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 cursor-pointer"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
                   disabled={isCreatingRoom}
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer"
                 >
                   {isCreatingRoom ? "กำลังสร้าง..." : "บันทึกห้องใหม่"}
                 </button>
@@ -1311,7 +1562,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setTimeOutAlertBooking(null)}
-              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-orange-600 text-white text-xs font-bold transition-all"
+              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-orange-600 text-white text-xs font-bold transition-all cursor-pointer"
             >
               รับทราบ
             </button>
